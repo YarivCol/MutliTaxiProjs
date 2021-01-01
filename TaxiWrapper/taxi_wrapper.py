@@ -72,7 +72,7 @@ class Taxi:
         self.passenger_index = passenger_index
         self.path_cords = []
         self.path_actions = []
-        self.env_graph = EnvGraph(MAP)
+        self.env_graph = EnvGraph(taxi_env.desc.astype(str))
         self.previous_coordinate = self.taxi_env.state[TAXIS_LOCATIONS][self.taxi_index]
         self.previous_action = None
 
@@ -112,4 +112,10 @@ class Taxi:
             self.previous_coordinate = next_coordinate
             self.previous_action = next_action
             return next_coordinate, next_action
+
+    def update_env_state(self, new_state):
+        """
+        Updates the state of the environment to the new given state.
+        """
+        self.taxi_env = new_state
 

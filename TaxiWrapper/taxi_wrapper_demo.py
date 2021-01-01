@@ -18,7 +18,7 @@ while taxi1.path_cords:
     env.step([taxi1.get_next_step()[1]])
     env.render()
 
-# Pickup the taxi:
+# Pickup the passenger:
 env.step([4])
 
 # Compute path to passenger's destination and drop her off there.
