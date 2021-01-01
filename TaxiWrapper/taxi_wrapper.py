@@ -1,6 +1,6 @@
 import networkx as nx
 from typing import Tuple, List
-from taxi_environment import MAP
+from TaxiWrapper.taxi_environment import MAP
 
 TAXIS_LOCATIONS, FUELS, PASSENGERS_START_LOCATION, PASSENGERS_DESTINATIONS, PASSENGERS_STATUS = 0, 1, 2, 3, 4
 

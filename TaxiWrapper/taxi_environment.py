@@ -11,7 +11,7 @@ from gym import utils
 from gym.utils import seeding
 import numpy as np
 import random
-from config import taxi_env_rewards, base_available_actions, all_action_names
+from TaxiWrapper.config import taxi_env_rewards, base_available_actions, all_action_names
 
 MAP = [
     "+---------+",

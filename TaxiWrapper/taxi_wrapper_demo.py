@@ -1,5 +1,5 @@
-from taxi_environment import TaxiEnv
-from taxi_wrapper import *
+from TaxiWrapper.taxi_environment import TaxiEnv
+from TaxiWrapper.taxi_wrapper import *
 
 # Initialize a new environment with 1 taxi at a random location and display it:
 env = TaxiEnv(num_taxis=1, num_passengers=2, max_fuel=None,
