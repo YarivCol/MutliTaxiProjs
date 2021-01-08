@@ -1,4 +1,4 @@
-from TaxiWrapper.taxi_environment import TaxiEnv
+from multitaxienv.taxi_environment import TaxiEnv
 from TaxiWrapper.taxi_wrapper import *
 
 # Initialize a new environment with 1 taxi at a random location and display it:
