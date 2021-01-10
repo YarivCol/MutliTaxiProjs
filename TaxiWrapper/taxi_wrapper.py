@@ -86,7 +86,7 @@ class Taxi:
 
         # If a destination point wasn't specified, go to the passenger's destination
         if not dest:
-            if self.passenger_index:
+            if self.passenger_index is not None:
                 dest = env_state[PASSENGERS_DESTINATIONS][self.passenger_index]
             else:  # if the taxi has no allocated passenger, stay in place, i.e don't do any action.
                 self.path_cords, self.path_actions = [], []

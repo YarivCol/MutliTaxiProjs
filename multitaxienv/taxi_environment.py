@@ -114,7 +114,7 @@ class TaxiEnv(gym.Env):
 
         # Initializing default value
         if max_fuel is None:
-            self.max_fuel = [np.inf] * num_passengers
+            self.max_fuel = [np.inf] * num_taxis
         else:
             self.max_fuel = max_fuel
 
@@ -124,7 +124,7 @@ class TaxiEnv(gym.Env):
             self.desc = np.asarray(domain_map, dtype='c')
 
         if taxis_capacity is None:
-            self.taxis_capacity = [1] * num_passengers
+            self.taxis_capacity = [1] * num_taxis
         else:
             self.taxis_capacity = taxis_capacity
 
