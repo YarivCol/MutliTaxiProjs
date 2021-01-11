@@ -21,6 +21,7 @@ taxi_env_rewards = dict(
     collision=-30,
 )
 
+
 class Controller:
     def __init__(self, taxi_env, taxis):
         self.taxi_env = taxi_env
@@ -139,3 +140,37 @@ class Controller:
         total_cost = self.expected_cost(taxi_location, passenger_location) + taxi_env_rewards['pickup']
         total_cost += self.expected_cost(passenger_location, dropoff_location) + taxi_env_rewards['final_dropoff']
         return total_cost
+
+    def find_best_transfer_point(self, from_taxi_index, to_taxi_index, passenger_index):
+        """
+        Find the best point to transfer the passenger between the taxis. The best point is considered as the point
+        closest to the shortest path from the current location of the `to_taxi_index` taxi to the passenger's
+        destination. This point will cause the `to_taxi_index` make the smallest possible detour.
+        Args:
+            from_taxi_index: the index of the taxi currently holding the passenger.
+            to_taxi_index: the index of the taxi the passenger should be transferred to.
+            passenger_index: the index of the passenger that should be transferred.
+        Return:
+              The optimal point to make the transfer at.
+        """
+        # Compute the shortest path of the `to_taxi_index` taxi to the destination of the passenger.
+        self.taxis[to_taxi_index].compute_shortest_path(dest=self.taxi_env.state[PASSENGERS_DESTINATIONS][passenger_index])
+        to_taxi_shortest_path = self.taxis[to_taxi_index].path_cords
+
+        from_taxi_remaining_fuel = self.taxi_env.state[FUELS][from_taxi_index]
+        # A list of tuples where the first item is the off road distance the `to_taxi` will have to take from the
+        # shortest computed path to the closest point the `from_taxi` can get. The second item is the point
+        # furthest point that the `from_taxi` can get to, based on its fuel limitations.
+        off_road_distances = []
+        for point in to_taxi_shortest_path:
+            self.taxis[from_taxi_index].compute_shortest_path(dest=point)
+            # Compute how many steps of the path the taxi can't complete because of its fuel limit:
+            remaining_path = max(0, len(self.taxis[from_taxi_index].path_actions) - from_taxi_remaining_fuel)
+            off_road_distances.append((remaining_path, self.taxis[from_taxi_index].path_cords[
+                from_taxi_remaining_fuel - 1]))
+
+        # Select the optimal point (the one with minimal off-road steps for `to_taxi`):
+        optimal_point = min(off_road_distances, key=lambda x: x[0])[1]
+        return optimal_point
+
+
