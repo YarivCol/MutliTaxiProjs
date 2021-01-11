@@ -1,7 +1,7 @@
 import numpy as np
 from typing import Tuple, List
 from TaxiWrapper.taxi_wrapper import TAXIS_LOCATIONS, FUELS, PASSENGERS_START_LOCATION, PASSENGERS_DESTINATIONS, \
-    PASSENGERS_STATUS, Taxi
+    PASSENGERS_STATUS, Taxi, EnvGraph
 
 # TODO: Find a decent place for this
 taxi_env_rewards = dict(
@@ -27,6 +27,7 @@ class Controller:
         self.taxi_env = taxi_env
         self.taxis: List[Taxi] = taxis
         self.taxis_actions = [[] for _ in range(len(self.taxis))]
+        self.env_graph = EnvGraph(taxi_env.desc.astype(str))
 
     def get_next_step(self):
         # Check that not all taxis completed all steps:
@@ -129,17 +130,33 @@ class Controller:
         self.send_taxi_to_pickup(to_taxi_index, passenger_index)
         self.execute_all_actions()
 
-    def expected_cost(self, origin, dest):
-        _, actions = self.taxis[0].env_graph.get_path(origin, dest)  # TODO: Add an env_graph to controller?
-        return -len(actions)
+    def path_cost(self, origin, dest):
+        """
+        Args:
+            origin: coordinates of origin
+            dest: coordinates of destination
+
+        Returns:
+        The cost of a path between two points.
+        """
+        return -len(self.env_graph.get_path(origin, dest)[1])
 
     def expected_reward(self, taxi_index, passenger_index):
+        """
+        Calculates the expected (maximal) reward for a taxi to deliver a passenger. This does not consider
+        any interruptions along the way (collisions, fuel, etc.).
+        Args:
+            taxi_index: index of taxi
+            passenger_index: index of passenger to be delivered
+
+        Returns:
+        Total (maximal) reward for the drive
+        """
         taxi_location = self.taxi_env.state[TAXIS_LOCATIONS][taxi_index]
         passenger_location = self.taxi_env.state[PASSENGERS_START_LOCATION][passenger_index]
         dropoff_location = self.taxi_env.state[PASSENGERS_DESTINATIONS][passenger_index]
-        total_cost = self.expected_cost(taxi_location, passenger_location) + taxi_env_rewards['pickup']
-        total_cost += self.expected_cost(passenger_location, dropoff_location) + taxi_env_rewards['final_dropoff']
-        return total_cost
+        return self.path_cost(taxi_location, passenger_location) + taxi_env_rewards['pickup'] \
+               + self.path_cost(passenger_location, dropoff_location) + taxi_env_rewards['final_dropoff']
 
     def find_best_transfer_point(self, from_taxi_index, to_taxi_index, passenger_index):
         """
@@ -172,5 +189,4 @@ class Controller:
         # Select the optimal point (the one with minimal off-road steps for `to_taxi`):
         optimal_point = min(off_road_distances, key=lambda x: x[0])[1]
         return optimal_point
-
 
