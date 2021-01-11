@@ -1,7 +1,25 @@
+import numpy as np
 from typing import Tuple, List
 from TaxiWrapper.taxi_wrapper import TAXIS_LOCATIONS, FUELS, PASSENGERS_START_LOCATION, PASSENGERS_DESTINATIONS, \
     PASSENGERS_STATUS, Taxi
 
+# TODO: Find a decent place for this
+taxi_env_rewards = dict(
+    step=-1,
+    no_fuel=-20,
+    bad_pickup=-15,
+    bad_dropoff=-15,
+    bad_refuel=-10,
+    pickup=-1,
+    standby_engine_off=-1,
+    turn_engine_on=-1,
+    turn_engine_off=-1,
+    standby_engine_on=-1,
+    intermediate_dropoff=-10,
+    final_dropoff=100,
+    hit_wall=-20,
+    collision=-30,
+)
 
 class Controller:
     def __init__(self, taxi_env, taxis):
@@ -86,8 +104,10 @@ class Controller:
         Execute all actions that were previously computed for all taxis.
         """
         next_step = self.get_next_step()
+        total_rewards = np.zeros(len(self.taxis))
         while next_step:
-            self.taxi_env.step(next_step)
+            _, rewards, _ = self.taxi_env.step(next_step)
+            total_rewards += rewards
             next_step = self.get_next_step()
 
     def transfer_passenger(self, passenger_index, from_taxi_index, to_taxi_index, transfer_point):
@@ -107,3 +127,15 @@ class Controller:
         # Pickup the passenger by the second taxi:
         self.send_taxi_to_pickup(to_taxi_index, passenger_index)
         self.execute_all_actions()
+
+    def expected_cost(self, origin, dest):
+        _, actions = self.taxis[0].env_graph.get_path(origin, dest)  # TODO: Add an env_graph to controller?
+        return -len(actions)
+
+    def expected_reward(self, taxi_index, passenger_index):
+        taxi_location = self.taxi_env.state[TAXIS_LOCATIONS][taxi_index]
+        passenger_location = self.taxi_env.state[PASSENGERS_START_LOCATION][passenger_index]
+        dropoff_location = self.taxi_env.state[PASSENGERS_DESTINATIONS][passenger_index]
+        total_cost = self.expected_cost(taxi_location, passenger_location) + taxi_env_rewards['pickup']
+        total_cost += self.expected_cost(passenger_location, dropoff_location) + taxi_env_rewards['final_dropoff']
+        return total_cost
