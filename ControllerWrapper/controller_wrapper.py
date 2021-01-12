@@ -2,6 +2,9 @@ import numpy as np
 from typing import Tuple, List
 from TaxiWrapper.taxi_wrapper import TAXIS_LOCATIONS, FUELS, PASSENGERS_START_LOCATION, PASSENGERS_DESTINATIONS, \
     PASSENGERS_STATUS, Taxi, EnvGraph
+from itertools import combinations
+from networkx.algorithms.approximation.steinertree import steiner_tree
+from networkx.algorithms.lowest_common_ancestors import lowest_common_ancestor
 
 # TODO: Find a decent place for this
 taxi_env_rewards = dict(
@@ -21,13 +24,21 @@ taxi_env_rewards = dict(
     collision=-30,
 )
 
-
 class Controller:
     def __init__(self, taxi_env, taxis):
         self.taxi_env = taxi_env
         self.taxis: List[Taxi] = taxis
         self.taxis_actions = [[] for _ in range(len(self.taxis))]
         self.env_graph = EnvGraph(taxi_env.desc.astype(str))
+
+    def get_taxi_cors(self, taxi_index):
+        return self.taxi_env.state[TAXIS_LOCATIONS][taxi_index]
+
+    def get_passenger_cors(self, passenger_index):
+        return self.taxi_env.state[PASSENGERS_START_LOCATION][passenger_index]
+
+    def get_destination_cors(self, passenger_index):
+        return self.taxi_env.state[PASSENGERS_DESTINATIONS][passenger_index]
 
     def get_next_step(self):
         # Check that not all taxis completed all steps:
@@ -152,9 +163,9 @@ class Controller:
         Returns:
         Total (maximal) reward for the drive
         """
-        taxi_location = self.taxi_env.state[TAXIS_LOCATIONS][taxi_index]
-        passenger_location = self.taxi_env.state[PASSENGERS_START_LOCATION][passenger_index]
-        dropoff_location = self.taxi_env.state[PASSENGERS_DESTINATIONS][passenger_index]
+        taxi_location = self.get_taxi_cors(taxi_index)
+        passenger_location = self.get_passenger_cors(passenger_index)
+        dropoff_location = self.get_destination_cors(passenger_index)
         return self.path_cost(taxi_location, passenger_location) + taxi_env_rewards['pickup'] \
                + self.path_cost(passenger_location, dropoff_location) + taxi_env_rewards['final_dropoff']
 
@@ -189,4 +200,16 @@ class Controller:
         # Select the optimal point (the one with minimal off-road steps for `to_taxi`):
         optimal_point = min(off_road_distances, key=lambda x: x[0])[1]
         return optimal_point
+
+    def find_best_paths(self, passenger_indexes):
+        passenger_nodes = [self.env_graph.cors_to_node(*self.get_passenger_cors(p_i)) for p_i in passenger_indexes]
+        destination_nodes = [self.env_graph.cors_to_node(*self.get_destination_cors(p_i)) for p_i in passenger_indexes]
+        nx_graph = self.env_graph.get_nx()
+        min_tree = None
+        for t1, t2 in combinations(range(len(self.taxis)), 2):
+            t1_node = self.env_graph.cors_to_node(*self.get_taxi_cors(t1))
+            t2_node = self.env_graph.cors_to_node(*self.get_taxi_cors(t2))
+            T = steiner_tree(nx_graph, [t1_node, t2_node] + passenger_nodes + destination_nodes)
+            if min_tree is None or len(min_tree.edges) > len(T.edges):
+                min_tree = T
 

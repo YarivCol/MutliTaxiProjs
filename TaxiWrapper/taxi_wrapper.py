@@ -63,6 +63,9 @@ class EnvGraph:
                 actions.append(0)
         return cord_path[1:], actions
 
+    def get_nx(self) -> nx.Graph:
+        return self.graph.copy()
+
 
 class Taxi:
     def __init__(self, taxi_env, taxi_index, passenger_index=None):
