@@ -152,7 +152,7 @@ class Controller:
         Returns:
         The cost of a path between two points.
         """
-        return -len(self.env_graph.get_path(origin, dest)[1])
+        return len(self.env_graph.get_path(origin, dest)[1])
 
     def expected_reward(self, taxi_index, passenger_index):
         """
@@ -168,8 +168,8 @@ class Controller:
         taxi_location = self.get_taxi_cors(taxi_index)
         passenger_location = self.get_passenger_cors(passenger_index)
         dropoff_location = self.get_destination_cors(passenger_index)
-        return self.path_cost(taxi_location, passenger_location) + taxi_env_rewards['pickup'] \
-               + self.path_cost(passenger_location, dropoff_location) + taxi_env_rewards['final_dropoff']
+        return -self.path_cost(taxi_location, passenger_location) + taxi_env_rewards['pickup'] \
+               - self.path_cost(passenger_location, dropoff_location) + taxi_env_rewards['final_dropoff']
 
     def find_best_transfer_point(self, from_taxi_index, to_taxi_index, passenger_index):
         """
