@@ -4,7 +4,6 @@ from TaxiWrapper.taxi_wrapper import TAXIS_LOCATIONS, FUELS, PASSENGERS_START_LO
     PASSENGERS_STATUS, Taxi, EnvGraph
 from itertools import combinations
 from networkx.algorithms.approximation.steinertree import steiner_tree
-from networkx.algorithms.lowest_common_ancestors import lowest_common_ancestor
 
 # TODO: Find a decent place for this
 taxi_env_rewards = dict(
@@ -112,16 +111,19 @@ class Controller:
         self.taxis_actions[taxi_index].extend([self.taxi_env.action_index_dictionary['dropoff']])
         self.taxis[taxi_index].passenger_index = None  # todo: change if we allow a taxi to have more than 1 passenger.
 
-    def execute_all_actions(self):
+    def execute_all_actions(self, anim=False):
         """
         Execute all actions that were previously computed for all taxis.
         """
         next_step = self.get_next_step()
         total_rewards = np.zeros(len(self.taxis))
+        renders = []
         while next_step:
             _, rewards, _ = self.taxi_env.step(next_step)
+            renders.append(self.taxi_env.render(mode='ansi'))
             total_rewards += rewards
             next_step = self.get_next_step()
+        return total_rewards, renders
 
     def transfer_passenger(self, passenger_index, from_taxi_index, to_taxi_index, transfer_point):
         """
@@ -212,4 +214,7 @@ class Controller:
             T = steiner_tree(nx_graph, [t1_node, t2_node] + passenger_nodes + destination_nodes)
             if min_tree is None or len(min_tree.edges) > len(T.edges):
                 min_tree = T
+        return min_tree
+
+
 
