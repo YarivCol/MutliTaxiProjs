@@ -129,7 +129,7 @@ class TaxiEnv(gym.Env):
             self.taxis_capacity = taxis_capacity
 
         if fuel_type_list is None:
-            self.fuel_type_list = ['F'] * num_passengers
+            self.fuel_type_list = ['F'] * num_taxis
         else:
             self.fuel_type_list = fuel_type_list
 

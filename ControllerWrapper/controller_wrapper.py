@@ -24,6 +24,7 @@ taxi_env_rewards = dict(
     collision=-30,
 )
 
+
 class Controller:
     def __init__(self, taxi_env, taxis):
         self.taxi_env = taxi_env
@@ -122,7 +123,7 @@ class Controller:
         while next_step:
             _, rewards, _ = self.taxi_env.step(next_step)
             renders.append(self.taxi_env.render(mode='ansi'))
-            total_rewards += rewards
+            total_rewards += rewards if rewards else [0] * len(self.taxis)
             next_step = self.get_next_step()
         return total_rewards, renders
 
@@ -187,22 +188,44 @@ class Controller:
         # Compute the shortest path of the `to_taxi_index` taxi to the destination of the passenger.
         self.taxis[to_taxi_index].compute_shortest_path(dest=self.taxi_env.state[PASSENGERS_DESTINATIONS][passenger_index])
         to_taxi_shortest_path = self.taxis[to_taxi_index].path_cords
+        # Add the current location of the taxi as another optional transfer point:
+        to_taxi_shortest_path.insert(0, self.taxis[to_taxi_index].get_location())
 
-        from_taxi_remaining_fuel = self.taxi_env.state[FUELS][from_taxi_index]
+        # -1 to avoid finishing all the `from_taxi` fuel as it will not be able to make the dropoff
+        from_taxi_remaining_fuel = self.taxi_env.state[FUELS][from_taxi_index] - 1
+
         # A list of tuples where the first item is the off road distance the `to_taxi` will have to take from the
-        # shortest computed path to the closest point the `from_taxi` can get. The second item is the point
-        # furthest point that the `from_taxi` can get to, based on its fuel limitations.
+        # shortest computed path to the closest point the `from_taxi` can get. The second item is the point furthest
+        # point that the `from_taxi` can get to, based on its fuel limitations.
         off_road_distances = []
         for point in to_taxi_shortest_path:
             self.taxis[from_taxi_index].compute_shortest_path(dest=point)
             # Compute how many steps of the path the taxi can't complete because of its fuel limit:
             remaining_path = max(0, len(self.taxis[from_taxi_index].path_actions) - from_taxi_remaining_fuel)
-            off_road_distances.append((remaining_path, self.taxis[from_taxi_index].path_cords[
-                from_taxi_remaining_fuel - 1]))
+            if remaining_path > 0:
+                off_road_distances.append((remaining_path, self.taxis[from_taxi_index].path_cords[
+                    from_taxi_remaining_fuel - 1]))
+            else:
+                off_road_distances.append((0, point))
 
         # Select the optimal point (the one with minimal off-road steps for `to_taxi`):
         optimal_point = min(off_road_distances, key=lambda x: x[0])[1]
         return optimal_point
+
+    def find_closest_taxi(self, dest: List[int]):
+        """
+        Find the taxi that is closest to the given destination point and has enough fuel to get to this point.
+        If such a taxi exists, return its index, else return -1.
+        """
+        closest_taxi_distance = np.inf
+        closest_taxi_index = -1
+        for taxi in self.taxis:
+            taxi_distance = self.path_cost(taxi.get_location(), dest=dest)
+            taxi_fuel = taxi.get_fuel()
+            if taxi_distance < closest_taxi_distance and taxi_distance < taxi_fuel:
+                closest_taxi_distance = taxi_distance
+                closest_taxi_index = taxi.taxi_index
+        return closest_taxi_index
 
     def find_best_paths(self, passenger_indexes):
         passenger_nodes = [self.env_graph.cors_to_node(*self.get_passenger_cors(p_i)) for p_i in passenger_indexes]

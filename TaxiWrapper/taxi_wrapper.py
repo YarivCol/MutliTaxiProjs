@@ -121,3 +121,15 @@ class Taxi:
         """
         self.taxi_env = new_state
 
+    def get_location(self):
+        """
+        Returns the current location of the taxi.
+        """
+        return self.taxi_env.state[TAXIS_LOCATIONS][self.taxi_index]
+
+    def get_fuel(self):
+        """
+        Returns the current fuel state of the taxi.
+        """
+        return self.taxi_env.state[FUELS][self.taxi_index]
+
