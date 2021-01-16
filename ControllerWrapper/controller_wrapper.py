@@ -1,4 +1,5 @@
 import numpy as np
+import networkx as nx
 from typing import Tuple, List
 from TaxiWrapper.taxi_wrapper import TAXIS_LOCATIONS, FUELS, PASSENGERS_START_LOCATION, PASSENGERS_DESTINATIONS, \
     PASSENGERS_STATUS, Taxi, EnvGraph
@@ -208,13 +209,57 @@ class Controller:
         destination_nodes = [self.env_graph.cors_to_node(*self.get_destination_cors(p_i)) for p_i in passenger_indexes]
         nx_graph = self.env_graph.get_nx()
         min_tree = None
+        taxis = None
         for t1, t2 in combinations(range(len(self.taxis)), 2):
             t1_node = self.env_graph.cors_to_node(*self.get_taxi_cors(t1))
             t2_node = self.env_graph.cors_to_node(*self.get_taxi_cors(t2))
             T = steiner_tree(nx_graph, [t1_node, t2_node] + passenger_nodes + destination_nodes)
             if min_tree is None or len(min_tree.edges) > len(T.edges):
                 min_tree = T
-        return min_tree
+                taxis = t1, t2
+        return min_tree, taxis
 
+    def transfer_test(self, passenger_indexes):
+        T, taxis = self.find_best_paths(passenger_indexes)
+
+        assigns_pickup = [None] * len(passenger_indexes)
+        assigns_dropoff = [None] * len(passenger_indexes)
+        t1_node = self.env_graph.cors_to_node(*self.get_taxi_cors(taxis[0]))
+        t2_node = self.env_graph.cors_to_node(*self.get_taxi_cors(taxis[1]))
+        for i, p in enumerate(passenger_indexes):
+            p_node = self.env_graph.cors_to_node(*self.get_passenger_cors(p))
+            d_node = self.env_graph.cors_to_node(*self.get_destination_cors(p))
+            if nx.shortest_path_length(T, t1_node, p_node) <= nx.shortest_path_length(T, t2_node, p_node):
+                assigns_pickup[i] = taxis[0]
+            else:
+                assigns_pickup[i] = taxis[1]
+            if nx.shortest_path_length(T, t1_node, d_node) <= nx.shortest_path_length(T, t2_node, d_node):
+                assigns_dropoff[i] = taxis[0]
+            else:
+                assigns_dropoff[i] = taxis[1]
+
+        t_center = None
+        if assigns_pickup != assigns_dropoff:
+            t_center = nx.algorithms.distance_measures.center(T)[0]
+
+        self.show_path(T)
+        print("Pickup assignments: {0}".format(assigns_pickup))
+        print("Dropoff assignments: {0}".format(assigns_dropoff))
+        if t_center is not None:
+            print("Transfer point: {0}".format(self.env_graph.node_to_cors(t_center)))
+
+    def show_path(self, T):  # TODO Delete this later, for demo purposes only
+        nodes = [self.env_graph.node_to_cors(n) for n in T.nodes]
+        nds = np.array(nodes)
+        rows, cols = np.max(nds[:, 0]), np.max(nds[:, 1])
+        s = ""
+        for i in range(rows + 1):
+            s = ":"
+            for j in range(cols + 1):
+                if [i, j] in nodes:
+                    s += "O:"
+                else:
+                    s += " :"
+            print(s)
 
 
