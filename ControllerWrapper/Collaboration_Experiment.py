@@ -14,11 +14,11 @@ def no_collaboration_case(taxi_env: TaxiEnv, controller: Controller, taxis: List
     """
     passenger_location = taxi_env.state[PASSENGERS_START_LOCATION][passenger_index]
     passenger_destination = taxi_env.state[PASSENGERS_DESTINATIONS][passenger_index]
-    path_to_destination_cost = controller.path_cost(origin=passenger_location, dest=passenger_destination)
+    path_to_destination_cost = controller.env_graph.path_cost(origin=passenger_location, dest=passenger_destination)
     capable_taxis = []  # list with the indices of the taxis that can bring the passenger to the destination.
     for taxi in taxis:
         taxi_location = taxi.get_location()
-        path_to_passenger_cost = controller.path_cost(origin=taxi_location, dest=passenger_location)
+        path_to_passenger_cost = controller.env_graph.path_cost(origin=taxi_location, dest=passenger_location)
         total_path_cost = path_to_passenger_cost + path_to_destination_cost
         taxi_fuel = taxi.get_fuel()
         if total_path_cost <= taxi_fuel:
@@ -42,7 +42,8 @@ def collaboration_case(taxi_env: TaxiEnv, controller: Controller, taxis: List[Ta
         return False
 
     # Send the taxi to pick up the passenger:
-    controller.send_taxi_to_pickup(taxi_index=closest_taxi, passenger_index=passenger_index)
+    closest_taxi_path_to_passenger = controller.taxis[closest_taxi].send_taxi_to_pickup(passenger_index=passenger_index)
+    controller.taxis_actions[closest_taxi].extend(closest_taxi_path_to_passenger)
     controller.execute_all_actions()
 
     # Transfer the passenger between the two taxis:
@@ -53,7 +54,9 @@ def collaboration_case(taxi_env: TaxiEnv, controller: Controller, taxis: List[Ta
                                   transfer_point=transfer_point)
 
     # Send the second taxi to dropoff the passenger at her destination:
-    controller.send_taxi_to_dropoff(taxi_index=to_taxi_index[0])
+    to_taxi = to_taxi_index[0]
+    to_taxi_path_to_destination = controller.taxis[to_taxi].send_taxi_to_dropoff()
+    controller.taxis_actions[to_taxi].extend(to_taxi_path_to_destination)
     controller.execute_all_actions()
     return taxi_env.state[PASSENGERS_STATUS][0] == -1  # True if passenger arrived at destination, false otherwise.
 

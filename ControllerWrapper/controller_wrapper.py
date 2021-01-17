@@ -53,16 +53,6 @@ class Controller:
                     taxis_step.append(self.taxi_env.action_index_dictionary['standby'])
             return taxis_step
 
-    def set_meeting_point(self, taxis_index, point):
-        """
-        Send the taxis given by `taxis_index` to the given point.
-        Args:
-            taxis_index: a list with the indices of the taxis that should be sent to the given point.
-            point: the point to which the taxis should be sent.
-        """
-        for i in taxis_index:
-            self.send_taxi_to_point(i, point)
-
     def not_all_taxis_completed_path(self):
         """
         Check if not all taxis completed their paths.
@@ -70,48 +60,6 @@ class Controller:
         """
         taxi_not_completed_path = [i for i in self.taxis_actions if i]
         return any(taxi_not_completed_path)
-
-    def send_taxi_to_point(self, taxi_index, point):
-        """
-        Sends taxi number `taxi_index` to the given point.
-        Args:
-            taxi_index: the index of the taxi that should drive to the specified point.
-            point: the location the taxi should drive to.
-        """
-        self.taxis[taxi_index].compute_shortest_path(dest=point)
-        path_to_point = self.taxis[taxi_index].path_actions
-        self.taxis_actions[taxi_index].extend(path_to_point)
-
-    def send_taxi_to_pickup(self, taxi_index, passenger_index):
-        """
-        Sends taxi number `taxi_index` to pickup passenger number `passenger_index` from her current location.
-        Args:
-            taxi_index: the index of the taxi that should pickup the passenger.
-            passenger_index: the index of the passenger that should be picked up.
-        """
-        # Assign the passenger to the taxi by setting the passenger_index field of the taxi:
-        self.taxis[taxi_index].passenger_index = passenger_index
-
-        passenger_location = self.taxi_env.state[PASSENGERS_START_LOCATION][passenger_index]
-        self.send_taxi_to_point(taxi_index, point=passenger_location)
-
-        # Add a `pickup` action:
-        self.taxis_actions[taxi_index].extend([(self.taxi_env.action_index_dictionary['pickup'])])
-
-    def send_taxi_to_dropoff(self, taxi_index, point=None):
-        """
-        Sends taxi number `taxi_index` to dropoff its passenger at the location given by `point`. If no dropoff point is
-        given, the passenger will be dropped off at her destination.
-        Args:
-            taxi_index: the index of the taxi that should pickup the passenger
-            point (optional): the point at which to dropoff the passenger. If not specified, the passenger will be
-            dropped off at her destination.
-        """
-        self.send_taxi_to_point(taxi_index, point=point)
-
-        # Add a `dropoff` action:
-        self.taxis_actions[taxi_index].extend([self.taxi_env.action_index_dictionary['dropoff']])
-        self.taxis[taxi_index].passenger_index = None  # todo: change if we allow a taxi to have more than 1 passenger.
 
     def execute_all_actions(self, anim=False):
         """
@@ -137,24 +85,16 @@ class Controller:
              transfer_point: the location were the passenger transfer should take place in.
         """
         # Send both taxis to the transfer point:
-        self.send_taxi_to_dropoff(from_taxi_index, transfer_point)
-        self.send_taxi_to_point(to_taxi_index, transfer_point)
+        from_taxi_path_to_transfer_point = self.taxis[from_taxi_index].send_taxi_to_dropoff(transfer_point)
+        self.taxis_actions[from_taxi_index].extend(from_taxi_path_to_transfer_point)
+        to_taxi_path_to_transfer_point = self.taxis[to_taxi_index].send_taxi_to_point(transfer_point)
+        self.taxis_actions[to_taxi_index].extend(to_taxi_path_to_transfer_point)
         self.execute_all_actions()
 
         # Pickup the passenger by the second taxi:
-        self.send_taxi_to_pickup(to_taxi_index, passenger_index)
+        pickup_path = self.taxis[to_taxi_index].send_taxi_to_pickup(passenger_index)
+        self.taxis_actions[to_taxi_index].extend(pickup_path)
         self.execute_all_actions()
-
-    def path_cost(self, origin, dest):
-        """
-        Args:
-            origin: coordinates of origin
-            dest: coordinates of destination
-
-        Returns:
-        The cost of a path between two points.
-        """
-        return len(self.env_graph.get_path(origin, dest)[1])
 
     def expected_reward(self, taxi_index, passenger_index):
         """
@@ -170,8 +110,8 @@ class Controller:
         taxi_location = self.get_taxi_cors(taxi_index)
         passenger_location = self.get_passenger_cors(passenger_index)
         dropoff_location = self.get_destination_cors(passenger_index)
-        return -self.path_cost(taxi_location, passenger_location) + taxi_env_rewards['pickup'] \
-               - self.path_cost(passenger_location, dropoff_location) + taxi_env_rewards['final_dropoff']
+        return -self.env_graph.path_cost(taxi_location, passenger_location) + taxi_env_rewards['pickup'] \
+               - self.env_graph.path_cost(passenger_location, dropoff_location) + taxi_env_rewards['final_dropoff']
 
     def find_best_transfer_point(self, from_taxi_index, to_taxi_index, passenger_index):
         """
@@ -220,7 +160,7 @@ class Controller:
         closest_taxi_distance = np.inf
         closest_taxi_index = -1
         for taxi in self.taxis:
-            taxi_distance = self.path_cost(taxi.get_location(), dest=dest)
+            taxi_distance = self.env_graph.path_cost(taxi.get_location(), dest=dest)
             taxi_fuel = taxi.get_fuel()
             if taxi_distance < closest_taxi_distance and taxi_distance < taxi_fuel:
                 closest_taxi_distance = taxi_distance

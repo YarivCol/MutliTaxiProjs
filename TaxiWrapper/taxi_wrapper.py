@@ -1,4 +1,5 @@
 import networkx as nx
+import numpy as np
 from typing import Tuple, List
 
 TAXIS_LOCATIONS, FUELS, PASSENGERS_START_LOCATION, PASSENGERS_DESTINATIONS, PASSENGERS_STATUS = 0, 1, 2, 3, 4
@@ -66,6 +67,18 @@ class EnvGraph:
     def get_nx(self) -> nx.Graph:
         return self.graph.copy()
 
+    def path_cost(self, origin, dest):
+        """
+        Args:
+            origin: coordinates of origin
+            dest: coordinates of destination
+
+        Returns:
+        The cost of a path between two points.
+        """
+        return len(self.get_path(origin, dest)[1])
+
+
 
 class Taxi:
     def __init__(self, taxi_env, taxi_index, passenger_index=None):
@@ -77,15 +90,16 @@ class Taxi:
         self.env_graph = EnvGraph(taxi_env.desc.astype(str))
         self.previous_coordinate = self.taxi_env.state[TAXIS_LOCATIONS][self.taxi_index]
         self.previous_action = None
+        self.assigned_passengers = []
 
-    def compute_shortest_path(self, dest: list = None):
+    def compute_shortest_path(self, dest: list = None, origin: list = None):
         """
         Given a destination point represented by a list of [row, column], compute the shortest path to it from the
         current location of the taxi. If a destination point isn't specified, the shortest path to the passenger's
         destination will be computed.
         """
         env_state = self.taxi_env.state
-        current_location = env_state[TAXIS_LOCATIONS][self.taxi_index]
+        origin = origin if origin is not None else env_state[TAXIS_LOCATIONS][self.taxi_index]
 
         # If a destination point wasn't specified, go to the passenger's destination
         if not dest:
@@ -95,7 +109,7 @@ class Taxi:
                 self.path_cords, self.path_actions = [], []
                 return
 
-        cord_path, actions = self.env_graph.get_path(current_location, dest)
+        cord_path, actions = self.env_graph.get_path(origin, dest)
         self.path_cords = cord_path
         self.path_actions = actions
 
@@ -132,4 +146,104 @@ class Taxi:
         Returns the current fuel state of the taxi.
         """
         return self.taxi_env.state[FUELS][self.taxi_index]
+
+    def path_cost(self, dest: List[int]):
+        """
+        Compute the cost of the path from the taxi's current location to a given destination point.
+        """
+        current_location = self.taxi_env.state[TAXIS_LOCATIONS][self.taxi_index]
+        _, actions = self.env_graph.get_path(current_location, dest)
+        return len(actions)
+
+    def send_taxi_to_point(self, point):
+        """
+        Sends the taxi to the given point.
+        Args:
+            point: the location the taxi should drive to.
+        """
+        self.compute_shortest_path(dest=point)
+        path_to_point = self.path_actions
+        return path_to_point
+
+    def send_taxi_to_pickup(self, passenger_index):
+        """
+        Sends the taxi to pickup passenger number `passenger_index` from her current location.
+        Args:
+            passenger_index: the index of the passenger that should be picked up.
+        """
+        # Assign the passenger to the taxi by setting the passenger_index field of the taxi:
+        self.passenger_index = passenger_index  # todo: check if necessary
+
+        passenger_location = self.taxi_env.state[PASSENGERS_START_LOCATION][passenger_index]
+        path_to_passenger = self.send_taxi_to_point(point=passenger_location)
+
+        # Add a `pickup` action:
+        path_to_passenger.extend([(self.taxi_env.action_index_dictionary['pickup'])])
+
+        return path_to_passenger
+
+    def send_taxi_to_dropoff(self, point=None):
+        """
+        Sends the taxi to dropoff its passenger at the location given by `point`. If no dropoff point is given,
+        the passenger will be dropped off at her destination.
+        Args:
+            point (optional): the point at which to dropoff the passenger. If not specified, the passenger will be
+            dropped off at her destination.
+        """
+        path_to_destination = self.send_taxi_to_point(point=point)
+
+        # Add a `dropoff` action:
+        path_to_destination.extend([self.taxi_env.action_index_dictionary['dropoff']])
+        self.passenger_index = None  # todo: change if we allow a taxi to have more than 1 passenger.
+
+        return path_to_destination
+
+    def passenger_allocation_message(self, passenger_index):
+        """
+        Broadcast a message with information about the cost of the path to a specific passenger and the shortest
+        path from the taxi's current location to the destination of the passenger.
+        """
+        passenger_location = self.taxi_env.state[PASSENGERS_START_LOCATION][passenger_index]
+        pickup_cost = self.path_cost(dest=passenger_location)
+        message = {
+            'taxi_index': self.taxi_index,
+            'passenger_index': passenger_index,
+            'pickup_cost': pickup_cost
+        }
+        return message
+
+    def decide_assignments(self, communication_channel):
+        """
+        Go over all messages and check which taxi is the closets to every passenger. The taxi assigns to itself the
+        passengers that are closest to it.
+        """
+        pickup_costs = [np.inf] * self.taxi_env.num_passengers
+        assigned_taxi = [-1] * self.taxi_env.num_passengers
+        for message in communication_channel:
+            passenger_index = message['passenger_index']
+            taxi_index = message['taxi_index']
+            if message['pickup_cost'] < pickup_costs[passenger_index]:
+                pickup_costs[passenger_index] = message['pickup_cost']
+                assigned_taxi[passenger_index] = taxi_index
+
+        self.assigned_passengers = [i for i in range(len(assigned_taxi)) if assigned_taxi[i] == self.taxi_index]
+
+    def pickup_passengers(self):
+        """
+        Send the taxi to pickup every passenger that is assigned to it.
+        """
+        pickup_steps = []
+        for passenger in self.assigned_passengers:
+            passenger_location = self.taxi_env.state[PASSENGERS_START_LOCATION][passenger]
+            self.compute_shortest_path(dest=passenger_location, origin=self.path_cords[-1] if pickup_steps else None)
+            pickup_steps.extend(self.path_actions)
+
+            # Add pickup step
+            pickup_steps.append(self.taxi_env.action_index_dictionary['pickup'])
+
+        return pickup_steps
+
+
+
+
 
