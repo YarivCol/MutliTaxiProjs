@@ -32,9 +32,6 @@ class Controller:
         self.taxis_actions = [[] for _ in range(len(self.taxis))]
         self.env_graph = EnvGraph(taxi_env.desc.astype(str))
 
-    def get_taxi_cors(self, taxi_index):
-        return self.taxi_env.state[TAXIS_LOCATIONS][taxi_index]
-
     def get_passenger_cors(self, passenger_index):
         return self.taxi_env.state[PASSENGERS_START_LOCATION][passenger_index]
 
@@ -174,8 +171,8 @@ class Controller:
         min_tree = None
         taxis = None
         for t1, t2 in combinations(range(len(self.taxis)), 2):
-            t1_node = self.env_graph.cors_to_node(*self.get_taxi_cors(t1))
-            t2_node = self.env_graph.cors_to_node(*self.get_taxi_cors(t2))
+            t1_node = self.env_graph.cors_to_node(*self.taxis[t1].get_location())
+            t2_node = self.env_graph.cors_to_node(*self.taxis[t2].get_location())
             T = steiner_tree(nx_graph, [t1_node, t2_node] + passenger_nodes + destination_nodes)
             if min_tree is None or len(min_tree.edges) > len(T.edges):
                 min_tree = T
@@ -187,8 +184,8 @@ class Controller:
 
         assigns_pickup = [None] * len(passenger_indexes)
         assigns_dropoff = [None] * len(passenger_indexes)
-        t1_node = self.env_graph.cors_to_node(*self.get_taxi_cors(taxis[0]))
-        t2_node = self.env_graph.cors_to_node(*self.get_taxi_cors(taxis[1]))
+        t1_node = self.env_graph.cors_to_node(*self.taxis[taxis[0]].get_location())
+        t2_node = self.env_graph.cors_to_node(*self.taxis[taxis[1]].get_location())
         for i, p in enumerate(passenger_indexes):
             p_node = self.env_graph.cors_to_node(*self.get_passenger_cors(p))
             d_node = self.env_graph.cors_to_node(*self.get_destination_cors(p))

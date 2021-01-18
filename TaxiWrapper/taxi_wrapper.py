@@ -79,7 +79,6 @@ class EnvGraph:
         return len(self.get_path(origin, dest)[1])
 
 
-
 class Taxi:
     def __init__(self, taxi_env, taxi_index, passenger_index=None):
         self.taxi_env = taxi_env
@@ -91,6 +90,7 @@ class Taxi:
         self.previous_coordinate = self.taxi_env.state[TAXIS_LOCATIONS][self.taxi_index]
         self.previous_action = None
         self.assigned_passengers = []
+        self.communication_channel = []
 
     def compute_shortest_path(self, dest: list = None, origin: list = None):
         """
@@ -147,12 +147,12 @@ class Taxi:
         """
         return self.taxi_env.state[FUELS][self.taxi_index]
 
-    def path_cost(self, dest: List[int]):
+    def path_cost(self, dest: List[int], origin: List[int] = None):
         """
         Compute the cost of the path from the taxi's current location to a given destination point.
         """
-        current_location = self.taxi_env.state[TAXIS_LOCATIONS][self.taxi_index]
-        _, actions = self.env_graph.get_path(current_location, dest)
+        origin = origin if origin else self.taxi_env.state[TAXIS_LOCATIONS][self.taxi_index]
+        _, actions = self.env_graph.get_path(origin, dest)
         return len(actions)
 
     def send_taxi_to_point(self, point):
@@ -204,7 +204,12 @@ class Taxi:
         path from the taxi's current location to the destination of the passenger.
         """
         passenger_location = self.taxi_env.state[PASSENGERS_START_LOCATION][passenger_index]
-        pickup_cost = self.path_cost(dest=passenger_location)
+        origin = None
+        # Check if the taxi has an allocated passenger. If yes, compute the cost from this passenger's location:
+        if self.assigned_passengers:
+            origin = self.taxi_env.state[PASSENGERS_START_LOCATION][self.assigned_passengers[-1]]
+
+        pickup_cost = self.path_cost(dest=passenger_location, origin=origin)
         message = {
             'taxi_index': self.taxi_index,
             'passenger_index': passenger_index,
@@ -212,21 +217,53 @@ class Taxi:
         }
         return message
 
-    def decide_assignments(self, communication_channel):
+    def request_help_message(self, passenger_index):
+        """
+        Broadcast a message to all taxis, requesting for help to bring the assigned taxi to the destination.
+        """
+        passenger_destination = self.taxi_env.state[PASSENGERS_DESTINATIONS][passenger_index]
+        path_cost = self.path_cost(dest=passenger_destination)
+
+        # Request for help if the taxi hasn't enough fuel:
+        if path_cost >= self.get_fuel():
+            message = {
+                'taxi_index': self.taxi_index,
+                'passenger_index': passenger_index
+            }
+            return message
+
+    def passenger_transfer_message(self, passenger_index):
+        """
+        Broadcast a message with information about the path to the given passenger's destination.
+        """
+        passenger_destination = self.taxi_env.state[PASSENGERS_DESTINATIONS][passenger_index]
+        self.compute_shortest_path(dest=passenger_destination)
+        message = {
+            'taxi_index': self.taxi_index,
+            'passenger_index': passenger_index,
+            'shortest_path': self.path_cords
+        }
+        return message
+
+    def decide_assignments(self):
         """
         Go over all messages and check which taxi is the closets to every passenger. The taxi assigns to itself the
         passengers that are closest to it.
         """
-        pickup_costs = [np.inf] * self.taxi_env.num_passengers
-        assigned_taxi = [-1] * self.taxi_env.num_passengers
-        for message in communication_channel:
+        pickup_cost = np.inf
+        assigned_taxi = -1
+        for message in self.communication_channel:
             passenger_index = message['passenger_index']
             taxi_index = message['taxi_index']
-            if message['pickup_cost'] < pickup_costs[passenger_index]:
-                pickup_costs[passenger_index] = message['pickup_cost']
-                assigned_taxi[passenger_index] = taxi_index
+            if message['pickup_cost'] < pickup_cost:
+                pickup_cost = message['pickup_cost']
+                assigned_taxi = taxi_index
 
-        self.assigned_passengers = [i for i in range(len(assigned_taxi)) if assigned_taxi[i] == self.taxi_index]
+        if assigned_taxi == self.taxi_index:
+            self.assigned_passengers.append(passenger_index)
+
+        # Clear the communication channel:
+        self.communication_channel = []
 
     def pickup_passengers(self):
         """
@@ -242,6 +279,12 @@ class Taxi:
             pickup_steps.append(self.taxi_env.action_index_dictionary['pickup'])
 
         return pickup_steps
+
+    def listen(self, message):
+        """
+        Listen to new messages broadcast by different taxis and add it to the taxi's communication channel.
+        """
+        self.communication_channel.append(message)
 
 
 
