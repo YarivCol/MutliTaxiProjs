@@ -17,11 +17,10 @@ def no_collaboration_case(taxi_env: TaxiEnv, controller: Controller, taxis: List
     path_to_destination_cost = controller.env_graph.path_cost(origin=passenger_location, dest=passenger_destination)
     capable_taxis = []  # list with the indices of the taxis that can bring the passenger to the destination.
     for taxi in taxis:
-        taxi_location = taxi.get_location()
-        path_to_passenger_cost = controller.env_graph.path_cost(origin=taxi_location, dest=passenger_location)
+        path_to_passenger_cost = taxi.path_cost(dest=passenger_location)
         total_path_cost = path_to_passenger_cost + path_to_destination_cost
         taxi_fuel = taxi.get_fuel()
-        if total_path_cost <= taxi_fuel:
+        if total_path_cost < taxi_fuel:
             capable_taxis.append(taxi.taxi_index)
     return capable_taxis
 
@@ -42,21 +41,21 @@ def collaboration_case(taxi_env: TaxiEnv, controller: Controller, taxis: List[Ta
         return False
 
     # Send the taxi to pick up the passenger:
-    closest_taxi_path_to_passenger = controller.taxis[closest_taxi].send_taxi_to_pickup(passenger_index=passenger_index)
-    controller.taxis_actions[closest_taxi].extend(closest_taxi_path_to_passenger)
+    taxis[closest_taxi].send_taxi_to_pickup(passenger_index=passenger_index)
     controller.execute_all_actions()
 
     # Transfer the passenger between the two taxis:
-    to_taxi_index = [taxi.taxi_index for taxi in taxis if taxi.taxi_index != closest_taxi]
-    transfer_point = controller.find_best_transfer_point(from_taxi_index=closest_taxi, to_taxi_index=to_taxi_index[0],
-                                                         passenger_index=0)
-    controller.transfer_passenger(passenger_index=0, from_taxi_index=closest_taxi, to_taxi_index=to_taxi_index[0],
-                                  transfer_point=transfer_point)
+    to_taxi_index = [taxi.taxi_index for taxi in taxis if taxi.taxi_index != closest_taxi]  # todo: change if we
+    # allow more than two taxis
+    collaboration_taxi = 0  # todo: change after we support this in the controller
+    transfer_point = controller.find_best_transfer_point(from_taxi_index=closest_taxi, passenger_index=0,
+                                                         to_taxi_index=to_taxi_index[collaboration_taxi])
+    controller.transfer_passenger(passenger_index=0, from_taxi_index=closest_taxi,
+                                  to_taxi_index=to_taxi_index[collaboration_taxi], transfer_point=transfer_point)
 
     # Send the second taxi to dropoff the passenger at her destination:
-    to_taxi = to_taxi_index[0]
-    to_taxi_path_to_destination = controller.taxis[to_taxi].send_taxi_to_dropoff()
-    controller.taxis_actions[to_taxi].extend(to_taxi_path_to_destination)
+    to_taxi = to_taxi_index[collaboration_taxi]
+    controller.taxis[to_taxi].send_taxi_to_dropoff()
     controller.execute_all_actions()
     return taxi_env.state[PASSENGERS_STATUS][0] == -1  # True if passenger arrived at destination, false otherwise.
 

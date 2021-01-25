@@ -24,12 +24,12 @@ taxi_env_rewards = dict(
     collision=-30,
 )
 
+# TODO: 1. Allow the controller to choose the best taxi to collaborate with.
 
 class Controller:
     def __init__(self, taxi_env, taxis):
         self.taxi_env = taxi_env
         self.taxis: List[Taxi] = taxis
-        self.taxis_actions = [[] for _ in range(len(self.taxis))]
         self.env_graph = EnvGraph(taxi_env.desc.astype(str))
 
     def get_passenger_cors(self, passenger_index):
@@ -40,23 +40,18 @@ class Controller:
 
     def get_next_step(self):
         # Check that not all taxis completed all steps:
-        if self.not_all_taxis_completed_path():
-            taxis_step = []
-            for taxi_actions in self.taxis_actions:
-                if taxi_actions:
-                    step = taxi_actions.pop(0)
-                    taxis_step.append(step)
-                else:  # if there are no actions left in the path of the taxi, stay in place.
-                    taxis_step.append(self.taxi_env.action_index_dictionary['standby'])
+        if self.any_actions_left():
+            taxis_step = [taxi.get_next_step() for taxi in self.taxis]
+            taxis_step = [item if item is not None else self.taxi_env.action_index_dictionary['standby'] for item in
+                          taxis_step]
             return taxis_step
 
-    def not_all_taxis_completed_path(self):
+    def any_actions_left(self):
         """
         Check if not all taxis completed their paths.
         Return `True` if not all taxis completed their path and `False` if some taxi still has steps to do.
         """
-        taxi_not_completed_path = [i for i in self.taxis_actions if i]
-        return any(taxi_not_completed_path)
+        return any([taxi.actions_queue for taxi in self.taxis])
 
     def execute_all_actions(self, anim=False):
         """
@@ -82,15 +77,12 @@ class Controller:
              transfer_point: the location were the passenger transfer should take place in.
         """
         # Send both taxis to the transfer point:
-        from_taxi_path_to_transfer_point = self.taxis[from_taxi_index].send_taxi_to_dropoff(transfer_point)
-        self.taxis_actions[from_taxi_index].extend(from_taxi_path_to_transfer_point)
-        to_taxi_path_to_transfer_point = self.taxis[to_taxi_index].send_taxi_to_point(transfer_point)
-        self.taxis_actions[to_taxi_index].extend(to_taxi_path_to_transfer_point)
+        self.taxis[from_taxi_index].send_taxi_to_dropoff(transfer_point)
+        self.taxis[to_taxi_index].send_taxi_to_point(transfer_point)
         self.execute_all_actions()
 
         # Pickup the passenger by the second taxi:
-        pickup_path = self.taxis[to_taxi_index].send_taxi_to_pickup(passenger_index)
-        self.taxis_actions[to_taxi_index].extend(pickup_path)
+        self.taxis[to_taxi_index].send_taxi_to_pickup(passenger_index)
         self.execute_all_actions()
 
     def expected_reward(self, taxi_index, passenger_index):
@@ -104,7 +96,7 @@ class Controller:
         Returns:
         Total (maximal) reward for the drive
         """
-        taxi_location = self.get_taxi_cors(taxi_index)
+        taxi_location = self.taxis[taxi_index].get_location()
         passenger_location = self.get_passenger_cors(passenger_index)
         dropoff_location = self.get_destination_cors(passenger_index)
         return -self.env_graph.path_cost(taxi_location, passenger_location) + taxi_env_rewards['pickup'] \
@@ -123,8 +115,9 @@ class Controller:
               The optimal point to make the transfer at.
         """
         # Compute the shortest path of the `to_taxi_index` taxi to the destination of the passenger.
-        self.taxis[to_taxi_index].compute_shortest_path(dest=self.taxi_env.state[PASSENGERS_DESTINATIONS][passenger_index])
-        to_taxi_shortest_path = self.taxis[to_taxi_index].path_cords
+        path_cords, path_actions = self.taxis[to_taxi_index].compute_shortest_path(
+            dest=self.taxi_env.state[PASSENGERS_DESTINATIONS][passenger_index])
+        to_taxi_shortest_path = path_cords
         # Add the current location of the taxi as another optional transfer point:
         to_taxi_shortest_path.insert(0, self.taxis[to_taxi_index].get_location())
 
@@ -136,12 +129,11 @@ class Controller:
         # point that the `from_taxi` can get to, based on its fuel limitations.
         off_road_distances = []
         for point in to_taxi_shortest_path:
-            self.taxis[from_taxi_index].compute_shortest_path(dest=point)
+            path_cords, path_actions = self.taxis[from_taxi_index].compute_shortest_path(dest=point)
             # Compute how many steps of the path the taxi can't complete because of its fuel limit:
-            remaining_path = max(0, len(self.taxis[from_taxi_index].path_actions) - from_taxi_remaining_fuel)
+            remaining_path = max(0, len(path_actions) - from_taxi_remaining_fuel)
             if remaining_path > 0:
-                off_road_distances.append((remaining_path, self.taxis[from_taxi_index].path_cords[
-                    from_taxi_remaining_fuel - 1]))
+                off_road_distances.append((remaining_path, path_cords[from_taxi_remaining_fuel - 1]))
             else:
                 off_road_distances.append((0, point))
 
