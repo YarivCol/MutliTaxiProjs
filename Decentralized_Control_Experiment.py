@@ -3,7 +3,7 @@ from multitaxienv.taxi_environment import TaxiEnv
 from typing import Tuple, List
 
 
-def decentralized_control(num_taxis: int, num_passengers: int, max_fuel: List[int]=None):
+def decentralized_control(num_taxis: int, num_passengers: int, max_fuel: List[int] = None):
 
     # Initialize a new environment with 2 taxis at a random location and 1 passenger, and display it:
     env = TaxiEnv(num_taxis=num_taxis, num_passengers=num_passengers, max_fuel=max_fuel,
@@ -13,13 +13,16 @@ def decentralized_control(num_taxis: int, num_passengers: int, max_fuel: List[in
     env.s = 1022
     env.render()
 
+    env.state = [[[1, 1], [2, 2], [4, 1]], [8, 8, 8], [[0, 0]], [[4, 3]], [0]]
+    env.render()
+
     # Initialize a Taxi object for each taxi:
     all_taxis = []
     for i in range(num_taxis):
         taxi = Taxi(env, taxi_index=i)
         all_taxis.append(taxi)
 
-    # For every taxi, broadcast its cost to every passenger and the shortest path to the destinations of all passengers:
+    # For every taxi, broadcast its cost to every passenger:
     for i in range(num_passengers):
         for taxi in all_taxis:
             [all_taxis[j].listen(message=taxi.passenger_allocation_message(passenger_index=i))
@@ -39,17 +42,39 @@ def decentralized_control(num_taxis: int, num_passengers: int, max_fuel: List[in
 
     # For every taxi, check if it has fuel to bring its assigned passenger to the destination, if not request help:
     for taxi in all_taxis:
-        help_message = taxi.request_help_message(0)  # todo: support multiple passengers!
+        help_message = taxi.request_help_message()
         if help_message:
-            [all_taxis[j].listen(message=help_message) for j in range(num_taxis)]
+            [all_taxis[j].listen(message=help_message) for j in range(num_taxis) if j != taxi.taxi_index]
 
     # For every taxi, broadcast the shortest path from its current location to the destination of the passenger:
     for taxi in all_taxis:
-        for message in taxi.communication_channel:
-            # todo: continue here
+        taxi_messages = taxi.passenger_transfer_message()
+        [all_taxis[message.get('recipient_taxi_index')].listen(message=[message]) for message in taxi_messages]
 
-            [all_taxis[j].listen(message=taxi.passenger_transfer_message(passenger_index=0))  # todo: support multiple passengers!
-             for j in range(num_taxis)]
+    # Find the best candidate for every taxi to make the transfer with:
+    for taxi in all_taxis:
+        transfer_message = taxi.set_transfer_point()
+        if transfer_message:
+            [all_taxis[message.get('helping_taxi')].listen(message=[message]) for message in transfer_message]
+
+    # For every taxi, check if it is the selected taxi for the transfer. If yes go to the transfer point:
+    for taxi in all_taxis:
+        taxi.intermediate_pickup()
+
+    # Execute the actions of all taxis:
+    execute_all_actions(taxi_env=env, actions=[taxi.path_actions for taxi in all_taxis])
+
+    # Pickup the passenger and bring her to the destination:
+    actions = []
+    for taxi in all_taxis:
+        taxi_actions = taxi.send_taxi_to_pickup()
+        taxi_actions.extend(taxi.send_taxi_to_dropoff())
+        actions.append(taxi_actions)
+
+    # Execute the actions of all taxis:
+    execute_all_actions(taxi_env=env, actions=actions)
+
+    print('great success')
 
 
 def execute_all_actions(taxi_env, actions):
@@ -60,7 +85,8 @@ def execute_all_actions(taxi_env, actions):
         next_step = [actions[i].pop(0) if actions[i] else taxi_env.action_index_dictionary['standby']
                      for i in range(len(actions))]
         taxi_env.step(next_step)
+
         taxi_env.render()
 
 
-decentralized_control(num_taxis=2, num_passengers=2)
+decentralized_control(num_taxis=3, num_passengers=1, max_fuel=[8, 8, 8])
