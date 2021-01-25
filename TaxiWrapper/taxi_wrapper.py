@@ -80,54 +80,33 @@ class EnvGraph:
 
 
 class Taxi:
-    def __init__(self, taxi_env, taxi_index, passenger_index=None):
+    def __init__(self, taxi_env, taxi_index, assigned_passengers=None):
         self.taxi_env = taxi_env
         self.taxi_index = taxi_index
-        self.passenger_index = passenger_index
-        self.path_cords = []
-        self.path_actions = []
         self.env_graph = EnvGraph(taxi_env.desc.astype(str))
-        self.previous_coordinate = self.taxi_env.state[TAXIS_LOCATIONS][self.taxi_index]
-        self.previous_action = None
-        self.assigned_passengers = []
         self.communication_channel = []
+        self.actions_queue = []
+        self.passenger_index = passenger_index
+        self.assigned_passengers = assigned_passengers
 
-    def compute_shortest_path(self, dest: list = None, origin: list = None):
+    def compute_shortest_path(self, dest: list, origin: list = None):
         """
         Given a destination point represented by a list of [row, column], compute the shortest path to it from the
-        current location of the taxi. If a destination point isn't specified, the shortest path to the passenger's
-        destination will be computed.
+        current location of the taxi or from the origin point if given.
         """
         env_state = self.taxi_env.state
         origin = origin if origin is not None else env_state[TAXIS_LOCATIONS][self.taxi_index]
-
-        # If a destination point wasn't specified, go to the passenger's destination
-        if not dest:
-            if self.passenger_index is not None:
-                dest = env_state[PASSENGERS_DESTINATIONS][self.passenger_index]
-            else:  # if the taxi has no allocated passenger, stay in place, i.e don't do any action.
-                self.path_cords, self.path_actions = [], []
-                return
-
         cord_path, actions = self.env_graph.get_path(origin, dest)
-        self.path_cords = cord_path
-        self.path_actions = actions
+        return cord_path, actions
 
     def get_next_step(self):
         """
         Gets the next step in the path of the shortest path that was previously computed.
-        Returns a tuple where the first item is the coordinate of the next step and the second item is the action.
+        Returns the action of the next step .
         """
-        # Check if the last step moved the taxi - if not, it prevented a collision and should be executed again.
-        if self.taxi_env.state[TAXIS_LOCATIONS][self.taxi_index] != self.previous_coordinate:
-            return self.previous_coordinate, self.previous_action
-
-        if self.path_cords and self.path_actions:
-            next_coordinate = self.path_cords.pop(0)
-            next_action = self.path_actions.pop(0)
-            self.previous_coordinate = next_coordinate
-            self.previous_action = next_action
-            return next_coordinate, next_action
+        if self.actions_queue:
+            next_action = self.actions_queue.pop(0)
+            return next_action
 
     def update_env_state(self, new_state):
         """
@@ -157,13 +136,12 @@ class Taxi:
 
     def send_taxi_to_point(self, point):
         """
-        Sends the taxi to the given point.
+        Sends the taxi to the given point. Add all steps in the path to the actions queue of the taxi.
         Args:
             point: the location the taxi should drive to.
         """
-        self.compute_shortest_path(dest=point)
-        path_to_point = self.path_actions
-        return path_to_point
+        path_to_point = self.compute_shortest_path(dest=point)[1]
+        self.actions_queue.extend(path_to_point)
 
     def send_taxi_to_pickup(self, passenger_index=None):
         """
@@ -172,20 +150,19 @@ class Taxi:
             passenger_index: the index of the passenger that should be picked up.
         """
         # Assign the passenger to the taxi by setting the passenger_index field of the taxi:
-        if passenger_index:
-            self.passenger_index = passenger_index  # todo: check if necessary
+        if passenger_index is not None:
+            self.assigned_passengers.append(passenger_index)
 
         # Check if the taxi has an assigned passenger, if not don't do anything
         if not self.assigned_passengers:
-            return []
+            return
 
-        passenger_location = self.taxi_env.state[PASSENGERS_START_LOCATION][self.passenger_index]
-        path_to_passenger = self.send_taxi_to_point(point=passenger_location)
+        passenger_location = self.taxi_env.state[PASSENGERS_START_LOCATION][self.assigned_passengers[0]]  # todo:
+        # check if should support multiple passengers
+        self.send_taxi_to_point(point=passenger_location)
 
         # Add a `pickup` action:
-        path_to_passenger.extend([(self.taxi_env.action_index_dictionary['pickup'])])
-
-        return path_to_passenger
+        self.actions_queue.extend([(self.taxi_env.action_index_dictionary['pickup'])])
 
     def send_taxi_to_dropoff(self, point=None):
         """
@@ -197,14 +174,12 @@ class Taxi:
         """
         if not self.assigned_passengers:
             return []
-        path_to_destination = self.send_taxi_to_point(point=point)
+        self.send_taxi_to_point(point=point)
 
         # Add a `dropoff` action:
-        path_to_destination.extend([self.taxi_env.action_index_dictionary['dropoff']])
+        self.actions_queue.extend([self.taxi_env.action_index_dictionary['dropoff']])
         self.passenger_index = None  # todo: change if we allow a taxi to have more than 1 passenger.
         self.assigned_passengers.pop()
-
-        return path_to_destination
 
     def passenger_allocation_message(self, passenger_index):
         """
@@ -257,12 +232,12 @@ class Taxi:
             passenger_index = incoming_message.get('passenger_index')
             recipient_taxi_index = incoming_message.get('taxi_index')
             passenger_destination = self.taxi_env.state[PASSENGERS_DESTINATIONS][passenger_index]
-            self.compute_shortest_path(dest=passenger_destination)
+            path_cords, path_actions = self.compute_shortest_path(dest=passenger_destination)
             message = {
                 'type': 'path_response',
                 'taxi_index': self.taxi_index,
                 'passenger_index': passenger_index,
-                'shortest_path': self.path_cords,
+                'shortest_path': path_cords,
                 'recipient_taxi_index': recipient_taxi_index,
                 'taxi_fuel': self.get_fuel()
             }
@@ -293,20 +268,20 @@ class Taxi:
         # Clear the communication channel:
         self.communication_channel = []
 
-    def pickup_passengers(self):
+    def pickup_multiple_passengers(self):
         """
         Send the taxi to pickup every passenger that is assigned to it.
         """
-        pickup_steps = []
+        origin = self.get_location()
         for passenger in self.assigned_passengers:
             passenger_location = self.taxi_env.state[PASSENGERS_START_LOCATION][passenger]
-            self.compute_shortest_path(dest=passenger_location, origin=self.path_cords[-1] if pickup_steps else None)
-            pickup_steps.extend(self.path_actions)
+            path_cords, path_actions = self.compute_shortest_path(dest=passenger_location, origin=origin)
+            self.actions_queue.extend(path_actions)
 
             # Add pickup step
-            pickup_steps.append(self.taxi_env.action_index_dictionary['pickup'])
+            self.actions_queue.append(self.taxi_env.action_index_dictionary['pickup'])
 
-        return pickup_steps
+            origin = passenger_location
 
     def listen(self, message):
         """
@@ -344,7 +319,7 @@ class Taxi:
         self.communication_channel = []
 
         # send the taxi to the transfer point:
-        self.path_actions = self.send_taxi_to_dropoff(transfer_point)
+        self.send_taxi_to_dropoff(transfer_point)
 
         if helping_taxi_index != self.taxi_index:
             transfer_message = {
@@ -381,11 +356,11 @@ class Taxi:
         # point that the `from_taxi` can get to, based on its fuel limitations.
         off_road_distances = []
         for point in path_to_dest:
-            self.compute_shortest_path(dest=point)
+            path_cords, path_actions = self.compute_shortest_path(dest=point)
             # Compute how many steps of the path the taxi can't complete because of its fuel limit:
-            remaining_path = max(0, self.path_cost(origin=self.get_location(), dest=point) - from_taxi_remaining_fuel)
+            remaining_path = max(0, len(path_actions) - from_taxi_remaining_fuel)
             if remaining_path > 0:
-                off_road_distances.append((remaining_path, self.path_cords[from_taxi_remaining_fuel - 1]))
+                off_road_distances.append((remaining_path, path_cords[from_taxi_remaining_fuel - 1]))
             else:
                 off_road_distances.append((0, point))
 
@@ -403,10 +378,10 @@ class Taxi:
         """
         for message in self.communication_channel:
             transfer_point = message.get('transfer_point')
-            self.path_actions = self.send_taxi_to_point(point=transfer_point)
+            self.send_taxi_to_point(point=transfer_point)
             self.passenger_index = message.get('passenger_index')
             self.assigned_passengers.append(message.get('passenger_index'))
-
+        self.communication_channel = []
 
 
 

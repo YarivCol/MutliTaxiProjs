@@ -11,7 +11,7 @@ env.s = 1022
 env.render()
 
 # Initialize a Taxi object for each taxi:
-taxi1 = Taxi(env, taxi_index=0, passenger_index=0)
+taxi1 = Taxi(env, taxi_index=0, assigned_passengers=0)
 taxi2 = Taxi(env, taxi_index=1)
 controller = Controller(env, taxis=[taxi1, taxi2])
 

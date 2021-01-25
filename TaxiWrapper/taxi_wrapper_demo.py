@@ -11,7 +11,7 @@ env.s = 1022
 env.render()
 
 # Initialize a new taxi object for the taxi, and send it to pick up the second passenger:
-taxi1 = Taxi(env, taxi_index=0, passenger_index=1)
+taxi1 = Taxi(env, taxi_index=0, assigned_passengers=1)
 taxi1.compute_shortest_path(dest=env.state[PASSENGERS_START_LOCATION][1])
 print(f'PATH: {taxi1.path_cords}, ACTIONS: {taxi1.path_actions}')
 while taxi1.path_cords:

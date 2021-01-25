@@ -33,12 +33,11 @@ def decentralized_control(num_taxis: int, num_passengers: int, max_fuel: List[in
             taxi.decide_assignments()
 
     # Send taxis to pickup all assigned passengers:
-    pickup_actions = []
     for taxi in all_taxis:
-        pickup_actions.append(taxi.pickup_passengers())
+        taxi.pickup_multiple_passengers()
 
     # Execute the actions of all taxis:
-    execute_all_actions(taxi_env=env, actions=pickup_actions)
+    execute_all_actions(taxi_env=env, taxis=all_taxis)
 
     # For every taxi, check if it has fuel to bring its assigned passenger to the destination, if not request help:
     for taxi in all_taxis:
@@ -62,25 +61,24 @@ def decentralized_control(num_taxis: int, num_passengers: int, max_fuel: List[in
         taxi.intermediate_pickup()
 
     # Execute the actions of all taxis:
-    execute_all_actions(taxi_env=env, actions=[taxi.path_actions for taxi in all_taxis])
+    execute_all_actions(taxi_env=env, taxis=all_taxis)
 
     # Pickup the passenger and bring her to the destination:
-    actions = []
     for taxi in all_taxis:
-        taxi_actions = taxi.send_taxi_to_pickup()
-        taxi_actions.extend(taxi.send_taxi_to_dropoff())
-        actions.append(taxi_actions)
+        taxi.send_taxi_to_pickup()
+        taxi.send_taxi_to_dropoff()
 
     # Execute the actions of all taxis:
-    execute_all_actions(taxi_env=env, actions=actions)
+    execute_all_actions(taxi_env=env, taxis=all_taxis)
 
     print('great success')
 
 
-def execute_all_actions(taxi_env, actions):
+def execute_all_actions(taxi_env, taxis):
     """
     Execute all actions that were previously computed for all taxis.
     """
+    actions = [taxi.actions_queue for taxi in taxis]
     while any(actions):
         next_step = [actions[i].pop(0) if actions[i] else taxi_env.action_index_dictionary['standby']
                      for i in range(len(actions))]
