@@ -12,9 +12,9 @@ def decentralized_control(num_taxis: int, num_passengers: int, max_fuel: List[in
     env.reset()
     env.s = 1022
     env.render()
-
-    env.state = [[[1, 1], [2, 2], [4, 1]], [8, 8, 8], [[0, 0]], [[4, 3]], [0]]
-    env.render()
+    print(env.state)
+    # env.state = [[[2, 1], [0, 3], [0, 1]], [8, 8, 8], [[4, 0]], [[0, 4]], [0]]
+    # env.render()
 
     # Initialize a Taxi object for each taxi:
     all_taxis = []
@@ -87,4 +87,4 @@ def execute_all_actions(taxi_env, taxis):
         taxi_env.render()
 
 
-decentralized_control(num_taxis=3, num_passengers=1, max_fuel=[8, 8, 8])
+decentralized_control(num_taxis=3, num_passengers=1, max_fuel=[6, 6, 6])

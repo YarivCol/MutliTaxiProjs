@@ -86,8 +86,7 @@ class Taxi:
         self.env_graph = EnvGraph(taxi_env.desc.astype(str))
         self.communication_channel = []
         self.actions_queue = []
-        self.passenger_index = passenger_index
-        self.assigned_passengers = assigned_passengers
+        self.assigned_passengers = assigned_passengers if assigned_passengers else []
 
     def compute_shortest_path(self, dest: list, origin: list = None):
         """
@@ -173,13 +172,13 @@ class Taxi:
             dropped off at her destination.
         """
         if not self.assigned_passengers:
-            return []
-        self.send_taxi_to_point(point=point)
+            return
+        destination = point if point else self.taxi_env.state[PASSENGERS_DESTINATIONS][self.assigned_passengers[0]]
+        self.send_taxi_to_point(point=destination)
 
         # Add a `dropoff` action:
         self.actions_queue.extend([self.taxi_env.action_index_dictionary['dropoff']])
-        self.passenger_index = None  # todo: change if we allow a taxi to have more than 1 passenger.
-        self.assigned_passengers.pop()
+        self.assigned_passengers.pop(0)
 
     def passenger_allocation_message(self, passenger_index):
         """
@@ -301,6 +300,7 @@ class Taxi:
         remaining_dist_to_dest = self.path_cost(dest=self.taxi_env.state[PASSENGERS_DESTINATIONS][
             self.assigned_passengers[0]]) - self.get_fuel()
         transfer_point = self.taxi_env.state[PASSENGERS_DESTINATIONS][self.assigned_passengers[0]]
+        current_cost = np.inf
 
         for message in self.communication_channel:
             helping_taxi = message.get('taxi_index')
@@ -311,10 +311,12 @@ class Taxi:
                                                                           path_to_dest=shortest_path,
                                                                           passenger_index=passenger_index,
                                                                           to_taxi_fuel=helping_taxi_fuel)
-            if distance < remaining_dist_to_dest:
-                helping_taxi_index = helping_taxi
-                remaining_dist_to_dest = distance
-                transfer_point = optimal_point
+            if distance <= remaining_dist_to_dest:
+                if cost < current_cost:
+                    helping_taxi_index = helping_taxi
+                    remaining_dist_to_dest = distance
+                    transfer_point = optimal_point
+                    current_cost = cost
 
         self.communication_channel = []
 
@@ -368,7 +370,7 @@ class Taxi:
         cost, optimal_point = min(off_road_distances, key=lambda x: x[0])
 
         # Compute how far from the destination the taxi can bring the passenger:
-        distance_from_destination = cost * 2 + len(path_to_dest) - to_taxi_fuel - 1  # -1 for the extra step of
+        distance_from_destination = max(0, cost * 2 + len(path_to_dest) - to_taxi_fuel - 1)  # -1 for the extra step of
         # current location added at the beginning of this function.
         return cost, optimal_point, distance_from_destination
 
@@ -379,7 +381,6 @@ class Taxi:
         for message in self.communication_channel:
             transfer_point = message.get('transfer_point')
             self.send_taxi_to_point(point=transfer_point)
-            self.passenger_index = message.get('passenger_index')
             self.assigned_passengers.append(message.get('passenger_index'))
         self.communication_channel = []
 
