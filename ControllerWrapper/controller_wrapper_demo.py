@@ -1,14 +1,17 @@
-from multitaxienv.taxi_environment import TaxiEnv
+from multitaxienv.taxi_environment import TaxiEnv, orig_MAP
 from TaxiWrapper.taxi_wrapper import *
 from ControllerWrapper.controller_wrapper import Controller
 
 # Initialize a new environment with 2 taxis at a random location and 1 passenger, and display it:
-env = TaxiEnv(num_taxis=2, num_passengers=1, max_fuel=[6, 6],
+env = TaxiEnv(num_taxis=2, num_passengers=1, max_fuel=[8, 8],
               taxis_capacity=None, collision_sensitive_domain=False,
-              fuel_type_list=None, option_to_stand_by=True)
+              fuel_type_list=None, option_to_stand_by=True, domain_map=orig_MAP)
 env.reset()
-env.s = 1022
+# env.s = 1022
 env.render()
+print(f'STATE: {env.state}')
+# env.state = [[[2,1], [1, 2]], [8, 8], [[4, 3]], [[4, 0]], [2]]
+# env.render()
 
 # Initialize a Taxi object for each taxi:
 taxi1 = Taxi(env, taxi_index=0)

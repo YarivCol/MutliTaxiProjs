@@ -41,9 +41,8 @@ class Controller:
     def get_next_step(self):
         # Check that not all taxis completed all steps:
         if self.any_actions_left():
-            taxis_step = [taxi.get_next_step() for taxi in self.taxis]
-            taxis_step = [item if item is not None else self.taxi_env.action_index_dictionary['standby'] for item in
-                          taxis_step]
+            taxis_step = {f'taxi_{taxi.taxi_index+1}': taxi.get_next_step() for taxi in self.taxis}
+            taxis_step = {item[0]: item[1] for item in taxis_step.items() if item[1] is not None}
             return taxis_step
 
     def any_actions_left(self):
@@ -58,14 +57,12 @@ class Controller:
         Execute all actions that were previously computed for all taxis.
         """
         next_step = self.get_next_step()
-        total_rewards = np.zeros(len(self.taxis))
         renders = []
         while next_step:
-            _, rewards, _ = self.taxi_env.step(next_step)
+            self.taxi_env.step(next_step)
             renders.append(self.taxi_env.render(mode='ansi'))
-            total_rewards += rewards if rewards else [0] * len(self.taxis)
             next_step = self.get_next_step()
-        return total_rewards, renders
+        return renders
 
     def transfer_passenger(self, passenger_index, from_taxi_index, to_taxi_index, transfer_point):
         """
@@ -130,10 +127,13 @@ class Controller:
         off_road_distances = []
         for point in to_taxi_shortest_path:
             path_cords, path_actions = self.taxis[from_taxi_index].compute_shortest_path(dest=point)
+            # Add the current location of the taxi for cases where the taxi has no fuel to move:
+            path_cords.insert(0, self.taxis[from_taxi_index].get_location())
             # Compute how many steps of the path the taxi can't complete because of its fuel limit:
             remaining_path = max(0, len(path_actions) - from_taxi_remaining_fuel)
             if remaining_path > 0:
-                off_road_distances.append((remaining_path, path_cords[from_taxi_remaining_fuel - 1]))
+                off_road_distances.append((remaining_path, path_cords[min(from_taxi_remaining_fuel,
+                                                                          len(path_actions))]))
             else:
                 off_road_distances.append((0, point))
 

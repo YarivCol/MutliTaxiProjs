@@ -57,7 +57,7 @@ def collaboration_case(taxi_env: TaxiEnv, controller: Controller, taxis: List[Ta
     to_taxi = to_taxi_index[collaboration_taxi]
     controller.taxis[to_taxi].send_taxi_to_dropoff()
     controller.execute_all_actions()
-    return taxi_env.state[PASSENGERS_STATUS][0] == -1  # True if passenger arrived at destination, false otherwise.
+    return taxi_env.state[PASSENGERS_STATUS][0] == 1  # True if passenger arrived at destination, false otherwise.
 
 
 def collaboration_experiment(test_repetitions: int, num_taxis: int, taxis_fuel: List[int]):

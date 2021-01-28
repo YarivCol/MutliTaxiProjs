@@ -177,7 +177,7 @@ class Taxi:
         self.send_taxi_to_point(point=destination)
 
         # Add a `dropoff` action:
-        self.actions_queue.extend([self.taxi_env.action_index_dictionary['dropoff']])
+        self.actions_queue.extend([self.taxi_env.action_index_dictionary[f'dropoff{self.assigned_passengers[0]}']])
         self.assigned_passengers.pop(0)
 
     def passenger_allocation_message(self, passenger_index):
@@ -359,10 +359,13 @@ class Taxi:
         off_road_distances = []
         for point in path_to_dest:
             path_cords, path_actions = self.compute_shortest_path(dest=point)
+            # Add the current location of the taxi for cases where the taxi has no fuel to move:
+            path_cords.insert(0, self.get_location())
             # Compute how many steps of the path the taxi can't complete because of its fuel limit:
             remaining_path = max(0, len(path_actions) - from_taxi_remaining_fuel)
             if remaining_path > 0:
-                off_road_distances.append((remaining_path, path_cords[from_taxi_remaining_fuel - 1]))
+                off_road_distances.append((remaining_path, path_cords[min(from_taxi_remaining_fuel,
+                                                                          len(path_actions))]))
             else:
                 off_road_distances.append((0, point))
 
