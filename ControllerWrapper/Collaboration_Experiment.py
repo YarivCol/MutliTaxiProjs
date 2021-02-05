@@ -37,11 +37,12 @@ def collaboration_case(taxi_env: TaxiEnv, controller: Controller, taxis: List[Ta
 
     # Allocate the passenger to the closest taxi:
     closest_taxi = controller.find_closest_taxi(dest=passenger_location)
+    taxis[closest_taxi].assigned_passengers.append(passenger_index)
     if closest_taxi == -1:
         return False
 
     # Send the taxi to pick up the passenger:
-    taxis[closest_taxi].send_taxi_to_pickup(passenger_index=passenger_index)
+    taxis[closest_taxi].send_taxi_to_pickup()
     controller.execute_all_actions()
 
     # Transfer the passenger between the two taxis:

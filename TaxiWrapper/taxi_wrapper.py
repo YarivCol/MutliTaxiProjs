@@ -149,21 +149,21 @@ class Taxi:
             passenger_index: the index of the passenger that should be picked up.
         """
         # Assign the passenger to the taxi by setting the passenger_index field of the taxi:
-        if passenger_index is not None:
-            self.assigned_passengers.append(passenger_index)
+        # if passenger_index is not None:
+        #     self.assigned_passengers.append(passenger_index)
 
         # Check if the taxi has an assigned passenger, if not don't do anything
-        if not self.assigned_passengers:
+        if not self.assigned_passengers and passenger_index is None:
             return
+        pickup_passenger = passenger_index if passenger_index else self.assigned_passengers[0]
 
-        passenger_location = self.taxi_env.state[PASSENGERS_START_LOCATION][self.assigned_passengers[0]]  # todo:
-        # check if should support multiple passengers
+        passenger_location = self.taxi_env.state[PASSENGERS_START_LOCATION][self.assigned_passengers[0]]  # todo: check if should support multiple passengers
         self.send_taxi_to_point(point=passenger_location)
 
         # Add a `pickup` action:
         self.actions_queue.extend([(self.taxi_env.action_index_dictionary['pickup'])])
 
-    def send_taxi_to_dropoff(self, point=None):
+    def send_taxi_to_dropoff(self, point=None):  # todo: allow passenger_index to drop-off
         """
         Sends the taxi to dropoff its passenger at the location given by `point`. If no dropoff point is given,
         the passenger will be dropped off at her destination.
@@ -179,11 +179,12 @@ class Taxi:
         # Add a `dropoff` action:
         self.actions_queue.extend([self.taxi_env.action_index_dictionary[f'dropoff{self.assigned_passengers[0]}']])
         self.assigned_passengers.pop(0)
+        # todo: remove the relevant passenger and not passenger at index 0
 
-    def passenger_allocation_message(self, passenger_index):
+    def pickup_cost(self, passenger_index):
         """
-        Broadcast a message with information about the cost of the path to a specific passenger and the shortest
-        path from the taxi's current location to the destination of the passenger.
+        Calculates the cost of the taxi to pickup the given passenger. The taxi calculates the cost from its current
+        location if it has no allocated passengers, else from the location of the last allocated passenger.
         """
         passenger_location = self.taxi_env.state[PASSENGERS_START_LOCATION][passenger_index]
         origin = None
@@ -192,6 +193,14 @@ class Taxi:
             origin = self.taxi_env.state[PASSENGERS_START_LOCATION][self.assigned_passengers[-1]]
 
         pickup_cost = self.path_cost(dest=passenger_location, origin=origin)
+        return pickup_cost
+
+    def passenger_allocation_message(self, passenger_index):
+        """
+        Broadcast a message with information about the cost of the path to a specific passenger and the shortest
+        path from the taxi's current location to the destination of the passenger.
+        """
+        pickup_cost = self.pickup_cost(passenger_index)
         message = {
             'taxi_index': self.taxi_index,
             'passenger_index': passenger_index,

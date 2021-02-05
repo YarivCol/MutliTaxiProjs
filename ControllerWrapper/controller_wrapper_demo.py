@@ -1,11 +1,11 @@
-from multitaxienv.taxi_environment import TaxiEnv, orig_MAP
+from multitaxienv.taxi_environment import TaxiEnv, orig_MAP, MAP
 from TaxiWrapper.taxi_wrapper import *
 from ControllerWrapper.controller_wrapper import Controller
 
 # Initialize a new environment with 2 taxis at a random location and 1 passenger, and display it:
-env = TaxiEnv(num_taxis=2, num_passengers=1, max_fuel=[8, 8],
+env = TaxiEnv(num_taxis=2, num_passengers=2, max_fuel=[8, 8],
               taxis_capacity=None, collision_sensitive_domain=False,
-              fuel_type_list=None, option_to_stand_by=True, domain_map=orig_MAP)
+              fuel_type_list=None, option_to_stand_by=True, domain_map=MAP)
 env.reset()
 # env.s = 1022
 env.render()
@@ -20,10 +20,11 @@ controller = Controller(env, taxis=[taxi1, taxi2])
 
 # Assign the passenger to the closest taxi:
 closest_taxi = controller.find_closest_taxi(dest=env.state[PASSENGERS_START_LOCATION][0])
+controller.taxis[closest_taxi].assigned_passengers.append(0)
 
 
 # Send the closest taxi to pick up the passenger:
-controller.taxis[closest_taxi].send_taxi_to_pickup(passenger_index=0)
+controller.taxis[closest_taxi].send_taxi_to_pickup()
 controller.execute_all_actions()
 env.render()
 

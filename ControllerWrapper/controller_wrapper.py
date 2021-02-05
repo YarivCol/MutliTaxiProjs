@@ -5,31 +5,35 @@ from TaxiWrapper.taxi_wrapper import TAXIS_LOCATIONS, FUELS, PASSENGERS_START_LO
     PASSENGERS_STATUS, Taxi, EnvGraph
 from itertools import combinations
 from networkx.algorithms.approximation.steinertree import steiner_tree
+from networkx.drawing.nx_agraph import graphviz_layout
+import matplotlib.pyplot as plt
 
 # TODO: Find a decent place for this
-taxi_env_rewards = dict(
-    step=-1,
-    no_fuel=-20,
-    bad_pickup=-15,
-    bad_dropoff=-15,
-    bad_refuel=-10,
-    pickup=-1,
-    standby_engine_off=-1,
-    turn_engine_on=-1,
-    turn_engine_off=-1,
-    standby_engine_on=-1,
-    intermediate_dropoff=-10,
-    final_dropoff=100,
-    hit_wall=-20,
-    collision=-30,
-)
+# taxi_env_rewards = dict(
+#     step=-1,
+#     no_fuel=-20,
+#     bad_pickup=-15,
+#     bad_dropoff=-15,
+#     bad_refuel=-10,
+#     pickup=-1,
+#     standby_engine_off=-1,
+#     turn_engine_on=-1,
+#     turn_engine_off=-1,
+#     standby_engine_on=-1,
+#     intermediate_dropoff=-10,
+#     final_dropoff=100,
+#     hit_wall=-20,
+#     collision=-30,
+# )
 
-# TODO: 1. Allow the controller to choose the best taxi to collaborate with.
 
 class Controller:
     def __init__(self, taxi_env, taxis):
         self.taxi_env = taxi_env
-        self.taxis: List[Taxi] = taxis
+        if taxis:
+            self.taxis: List[Taxi] = taxis
+        else:
+            self.taxis = [Taxi(taxi_env, i) for i in range(taxi_env.num_taxis)]
         self.env_graph = EnvGraph(taxi_env.desc.astype(str))
 
     def get_passenger_cors(self, passenger_index):
@@ -79,25 +83,26 @@ class Controller:
         self.execute_all_actions()
 
         # Pickup the passenger by the second taxi:
-        self.taxis[to_taxi_index].send_taxi_to_pickup(passenger_index)
+        self.taxis[to_taxi_index].assigned_passengers.append(passenger_index)
+        self.taxis[to_taxi_index].send_taxi_to_pickup()
         self.execute_all_actions()
 
-    def expected_reward(self, taxi_index, passenger_index):
-        """
-        Calculates the expected (maximal) reward for a taxi to deliver a passenger. This does not consider
-        any interruptions along the way (collisions, fuel, etc.).
-        Args:
-            taxi_index: index of taxi
-            passenger_index: index of passenger to be delivered
-
-        Returns:
-        Total (maximal) reward for the drive
-        """
-        taxi_location = self.taxis[taxi_index].get_location()
-        passenger_location = self.get_passenger_cors(passenger_index)
-        dropoff_location = self.get_destination_cors(passenger_index)
-        return -self.env_graph.path_cost(taxi_location, passenger_location) + taxi_env_rewards['pickup'] \
-               - self.env_graph.path_cost(passenger_location, dropoff_location) + taxi_env_rewards['final_dropoff']
+    # def expected_reward(self, taxi_index, passenger_index):
+    #     """
+    #     Calculates the expected (maximal) reward for a taxi to deliver a passenger. This does not consider
+    #     any interruptions along the way (collisions, fuel, etc.).
+    #     Args:
+    #         taxi_index: index of taxi
+    #         passenger_index: index of passenger to be delivered
+    #
+    #     Returns:
+    #     Total (maximal) reward for the drive
+    #     """
+    #     taxi_location = self.taxis[taxi_index].get_location()
+    #     passenger_location = self.get_passenger_cors(passenger_index)
+    #     dropoff_location = self.get_destination_cors(passenger_index)
+    #     return -self.env_graph.path_cost(taxi_location, passenger_location) + taxi_env_rewards['pickup'] \
+    #            - self.env_graph.path_cost(passenger_location, dropoff_location) + taxi_env_rewards['final_dropoff']
 
     def find_best_transfer_point(self, from_taxi_index, to_taxi_index, passenger_index):
         """
@@ -156,6 +161,24 @@ class Controller:
                 closest_taxi_index = taxi.taxi_index
         return closest_taxi_index
 
+    def allocate_passengers(self):
+        """
+        Allocate all passengers to the taxis based on the distance of every taxi from the passenger.
+        """
+        for i in range(self.taxi_env.num_passengers):
+            costs = [taxi.pickup_cost(passenger_index=i) for taxi in self.taxis]
+            assigned_taxi = costs.index(min(costs))
+            self.taxis[assigned_taxi].assigned_passengers.append(i)
+
+    def pickup_passengers(self):
+        """
+        Send all taxis to pickup all their passengers.
+        """
+        for taxi in self.taxis:
+            taxi.pickup_multiple_passengers()
+
+        self.execute_all_actions()
+
     def find_best_paths(self, passenger_indexes):
         passenger_nodes = [self.env_graph.cors_to_node(*self.get_passenger_cors(p_i)) for p_i in passenger_indexes]
         destination_nodes = [self.env_graph.cors_to_node(*self.get_destination_cors(p_i)) for p_i in passenger_indexes]
@@ -200,16 +223,33 @@ class Controller:
         if t_center is not None:
             print("Transfer point: {0}".format(self.env_graph.node_to_cors(t_center)))
 
+    def bla(self):
+        taxi_nodes = [self.env_graph.cors_to_node(*taxi.get_location()) for taxi in self.taxis]
+        dest_nodes = [self.env_graph.cors_to_node(*self.get_destination_cors(p_i)) for p_i in range(
+            self.taxi_env.num_passengers)]
+        T = steiner_tree(self.env_graph.get_nx(), taxi_nodes + dest_nodes)
+        print(f'TREE: {nx.is_tree(T)}')
+        pos = graphviz_layout(T, prog='dot')
+        nx.draw_networkx(T, pos=pos, with_labels=True)
+        plt.show()
+        self.show_path(T)
+
     def show_path(self, T):  # TODO Delete this later, for demo purposes only
         nodes = [self.env_graph.node_to_cors(n) for n in T.nodes]
+        taxi_locations = [taxi.get_location() for taxi in self.taxis]
+        destinations = self.taxi_env.state[PASSENGERS_DESTINATIONS]
         nds = np.array(nodes)
         rows, cols = np.max(nds[:, 0]), np.max(nds[:, 1])
         s = ""
         for i in range(rows + 1):
             s = ":"
             for j in range(cols + 1):
-                if [i, j] in nodes:
-                    s += "O:"
+                if [i, j] in taxi_locations:
+                    s += "T:"
+                elif [i, j] in destinations:
+                    s += f"{self.taxi_env.state[PASSENGERS_STATUS][destinations.index([i ,j])]-2}:"
+                elif [i, j] in nodes:
+                    s += "*:"
                 else:
                     s += " :"
             print(s)

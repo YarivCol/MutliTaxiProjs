@@ -366,11 +366,11 @@ class TaxiEnv(MultiAgentEnv):
         self.dones = {taxi_id: False for taxi_id in self.taxis_names}
         self.dones['__all__'] = False
         obs = {}
-        for i, taxi_id in enumerate(self.taxis_names):
-            # obs[taxi_id] = self.get_observation(self.state, taxi_id)
-            obs[taxi_id] = (self.get_agent_obs_by_id(i), self.get_observation(self.state, taxi_id))
+        # for i, taxi_id in enumerate(self.taxis_names):
+        # #     obs[taxi_id] = self.get_observation(self.state, taxi_id)
+        #     obs[taxi_id] = (self.get_agent_obs_by_id(i), self.get_observation(self.state, taxi_id))
 
-        return obs
+        # return obs
 
     def set_custom_passenger_dropoff_actions(self) -> (list, list):
         """
@@ -880,9 +880,9 @@ class TaxiEnv(MultiAgentEnv):
                 rewards[taxi_id] = total_reward
 
         obs = {}
-        for i, taxi_id in enumerate(action_dict.keys()):
-            #obs[taxi_id] = self.get_observation(self.state, taxi_id)
-            obs[taxi_id] = (self.get_agent_obs_by_id(i), self.get_observation(self.state, taxi_id))
+        # for i, taxi_id in enumerate(action_dict.keys()):
+        #     #obs[taxi_id] = self.get_observation(self.state, taxi_id)
+        #     obs[taxi_id] = (self.get_agent_obs_by_id(i), self.get_observation(self.state, taxi_id))
         # im = self.map2rgb()
         # plt.imshow(im)
         # self.plot_window()
