@@ -13,38 +13,7 @@ def create_taxis_list(env, taxis_num):
     
     return taxis_list
 
-
-def run_simulation(env, taxis_num):
-
-    env.reset()
-    # env.s = 1022
-    env.render()
-
-    allocator = TaskAllocator(env)
-
-    taxis_list = create_taxis_list(env, taxis_num)
-
-    taxis_biddings = allocator.get_taxis_bids(taxis_list)
-    biddings_allocation = allocator.taxis_auction_allocation(taxis_biddings)
-    biddings_allocation_cost = allocator.allocation_cost(biddings_allocation)
-    print(biddings_allocation)
-    print(biddings_allocation_cost)
-
-    print("---------")
-    
-    true_allocations_cost = allocator.passengers_allocations_cost()
-    optimal_allocation = allocator.optimal_allocation_minimal_value(true_allocations_cost)
-    # optimal_allocation_dict = {taxi_ind:passenger_ind for (taxi_ind,passenger_ind) in optimal_allocation}
-    optimal_allocation_cost = allocator.allocation_cost(optimal_allocation)
-    print("---------")
-    print(optimal_allocation)
-    print(optimal_allocation_cost)
-
-    return biddings_allocation_cost, optimal_allocation_cost
-
 def main():
-    
-
     # Assuming number of taxis is equal to the number of passensgers
     taxis_num = passengers_num = 4
 
