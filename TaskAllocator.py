@@ -1,6 +1,6 @@
 import numpy as np
 import itertools
-from typing import List
+from typing import List, Dict
 
 # Local imports
 from multitaxienv.taxi_environment import TaxiEnv
@@ -125,7 +125,7 @@ class TaskAllocator:
         optimal_allocation_dict = {taxi_ind:passenger_ind for (taxi_ind,passenger_ind) in optimal_allocation}
         return optimal_allocation_dict
     
-    def taxis_bidding_allocation(self, biddings):
+    def taxis_bidding_allocation(self, biddings: list):
         """
         Parameters:
             biddings: list of size num_passengers.
@@ -199,7 +199,7 @@ class TaskAllocator:
         return bids_on_passengers
 
     @staticmethod
-    def allocate_passengers(allocation, taxis: list):
+    def allocate_passengers(allocation: dict, taxis: list):
         """
         Parameters: allocation - a dict with taxi_index->passenger_index
                     taxis - a list of wrapped taxi objects
