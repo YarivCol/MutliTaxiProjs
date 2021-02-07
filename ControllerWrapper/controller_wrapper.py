@@ -146,6 +146,13 @@ class Controller:
         optimal_point = min(off_road_distances, key=lambda x: x[0])[1]
         return optimal_point
 
+    def find_best_transfer_point_h2(self, from_taxi_index, passenger_index):
+        shortest_path = self.taxis[from_taxi_index].compute_shortest_path(dest=self.taxi_env.state[
+            PASSENGERS_DESTINATIONS][passenger_index])[0]
+        shortest_path.insert(0, self.taxis[from_taxi_index].get_location())
+        transfer_point = shortest_path[max(0, min(self.taxis[from_taxi_index].get_fuel() - 1, len(shortest_path)-1))]
+        return transfer_point
+
     def find_closest_taxi(self, dest: List[int]):
         """
         Find the taxi that is closest to the given destination point and has enough fuel to get to this point.
