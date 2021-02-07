@@ -17,7 +17,7 @@ class TaskAllocator:
         """
         Input: start_point, a list of [row, column]
                dest_point, a list of [row, column]
-        Output: Length of shortest path between the two points
+        Returns: The length of shortest path between the two points
         """
 
         cord_path, _actions = self.env_graph.get_path(start_point, dest_point)
@@ -116,7 +116,7 @@ class TaskAllocator:
 
         return allocations_total_distances
 
-    def optimal_allocation_minimal_value(self, allocations):
+    def optimal_allocation_minimal_value(self, allocations: dict):
         """
         Parameters: allocations - a dictionary with allocation->cost mapping
         """
@@ -125,7 +125,7 @@ class TaskAllocator:
         optimal_allocation_dict = {taxi_ind:passenger_ind for (taxi_ind,passenger_ind) in optimal_allocation}
         return optimal_allocation_dict
     
-    def taxis_bidding_allocation(self, biddings: list):
+    def taxis_auction_allocation(self, biddings: list):
         """
         Parameters:
             biddings: list of size num_passengers.
