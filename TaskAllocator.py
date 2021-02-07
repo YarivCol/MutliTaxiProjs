@@ -161,7 +161,7 @@ class TaskAllocator:
             winning_taxi_ind = (min(bids_on_passenger, key=bids_on_passenger.get))
 
 
-            print("allocated taxi "+ str(winning_taxi_ind) + " passeneger " + str(passenger_ind))
+            # print("allocated taxi "+ str(winning_taxi_ind) + " passeneger " + str(passenger_ind))
             allocations[winning_taxi_ind] = passenger_ind
         
         # Each passenger must be allocated with a taxi
@@ -196,7 +196,6 @@ class TaskAllocator:
             bids_on_current_passenger = {taxi_ind:taxi_bid for (taxi_ind, taxi_bid) in enumerate(bids)}
             bids_on_passengers.append(bids_on_current_passenger)
         
-        print(bids_on_passengers)
         return bids_on_passengers
 
     @staticmethod

@@ -30,6 +30,5 @@ class BiddingTaxi(Taxi):
             taxi_to_passenger_distance = len(self.compute_shortest_path(taxi_location, passenger_start_loc))
 
             distances[passenger_ind] = taxi_to_passenger_distance
-        #TODO: remove print
-        print(distances)
+            
         return distances
