@@ -153,6 +153,36 @@ class Controller:
         transfer_point = shortest_path[max(0, min(self.taxis[from_taxi_index].get_fuel() - 1, len(shortest_path)-1))]
         return transfer_point
 
+    def find_optimal_transfer_point(self, from_taxi_index):
+        best_transfer_point = []
+        min_dist_from_dest = np.inf
+        from_taxi = self.taxis[from_taxi_index]
+        to_taxi = self.taxis[1 - from_taxi_index]
+        passenger_destination = self.taxi_env.state[PASSENGERS_DESTINATIONS][0]
+        for row in range(self.env_graph.rows):
+            for col in range(self.env_graph.cols):
+                transfer_point = [row, col]
+
+                # check if the from_taxi has enough fuel to reach the transfer point, if not continue
+                path_to_point_cost = from_taxi.path_cost(dest=transfer_point)
+                if path_to_point_cost > from_taxi.get_fuel() - 1:
+                    continue
+                else:
+                    # check if the to_taxi has enough fuel to reach the transfer point, if not compute the dist to dest
+                    path_to_point_cost = to_taxi.path_cost(dest=transfer_point)
+                    if path_to_point_cost > to_taxi.get_fuel() - 1:
+                        dist_from_dest = from_taxi.path_cost(dest=passenger_destination, origin=transfer_point)
+                    else:
+                        total_path_cost = path_to_point_cost + to_taxi.path_cost(origin=transfer_point,
+                                                                                 dest=passenger_destination)
+                        dist_from_dest = max(0, total_path_cost - (to_taxi.get_fuel() - 1))
+
+                    # Check if this transfer point is better than the current transfer point:
+                    if dist_from_dest < min_dist_from_dest:
+                        min_dist_from_dest = dist_from_dest
+                        best_transfer_point = transfer_point
+        return best_transfer_point
+
     def find_closest_taxi(self, dest: List[int]):
         """
         Find the taxi that is closest to the given destination point and has enough fuel to get to this point.

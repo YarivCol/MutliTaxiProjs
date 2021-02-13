@@ -18,16 +18,16 @@ import matplotlib.pyplot as plt
 from gym.spaces import Box, Tuple, Discrete
 
 
-
 orig_MAP = [
     "+---------+",
-    "|X: |F: :X|",
-    "| : | : : |",
+    "|X: |F: |X|",
+    "| : | : | |",
     "| : : : : |",
     "| | : | : |",
     "|X| :G|X: |",
     "+---------+",
 ]
+
 
 orig_MAP2 = [
     "+---------+",
@@ -55,6 +55,18 @@ MAP2 = [
     "| : : : : : : : : : : : |",
     "| : : : : : | : : : : : |",
     "| : : : : : | : : : : : |",
+    "| : : : : : : : : : : : |",
+    "|X| :G| | | :G| | | : |X|",
+    "+-----------------------+",
+]
+
+MAP3 = [
+    "+-----------------------+",
+    "|X: :F: | : | : : : :F:X|",
+    "| : | : : : : : | : | : |",
+    "| : : : : : : : : : : : |",
+    "| : : : : : : : : : : : |",
+    "| : : : : : : : : : : : |",
     "| : : : : : : : : : : : |",
     "|X| :G| | | :G| | | : |X|",
     "+-----------------------+",
@@ -871,6 +883,11 @@ class TaxiEnv(MultiAgentEnv):
                 # check if all taxis are out of fuel
                 done = fuels[taxi] == 0
                 self.dones[taxi_name] = self.dones[taxi_name] or done
+
+                # Update passenger location if it is on a taxi
+                for passenger_index in range(self.num_passengers):
+                    if passengers_status[passenger_index] == (taxi + 3):
+                        passengers_start_locations[passenger_index] = taxis_locations[taxi]
 
                 rewards[taxi_name] = reward
                 self.state = [taxis_locations, fuels, passengers_start_locations, destinations, passengers_status]

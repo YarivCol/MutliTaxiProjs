@@ -1,9 +1,11 @@
-from multitaxienv.taxi_environment import TaxiEnv, orig_MAP, MAP2, orig_MAP2
+from multitaxienv.taxi_environment import TaxiEnv, orig_MAP, MAP2, orig_MAP2, MAP3
 from TaxiWrapper.taxi_wrapper import *
 from ControllerWrapper.controller_wrapper import Controller
 import matplotlib.pyplot as plt
 import numpy as np
 import copy
+import sys
+
 
 # state = [[[2, 1], [2, 0]], [5, 6], [[0, 0]], [[4, 3]], [2]]  # GOOD EXAMPLE WHERE H1 IS BETTER
 
@@ -13,57 +15,61 @@ def no_collaboration_case(taxi_env: TaxiEnv, controller: Controller, taxis: List
     Check if the taxis are able to bring the passenger (given by the passenger_index) to her destination if they are not
     collaborating.
     Return:
-        A list with the indices of the taxis that are able to pick up the passenger and bring her to the destination.
+        - A list with the indices of the taxis that are able to pick up the passenger and bring her to the destination.
+        - The minimum distance that the taxis can bring the passenger from the destination (0 if arriving a the dest).
     """
     passenger_location = taxi_env.state[PASSENGERS_START_LOCATION][passenger_index]
     passenger_destination = taxi_env.state[PASSENGERS_DESTINATIONS][passenger_index]
     path_to_destination_cost = controller.env_graph.path_cost(origin=passenger_location, dest=passenger_destination)
     capable_taxis = []  # list with the indices of the taxis that can bring the passenger to the destination.
+    min_dist_from_dest = path_to_destination_cost  # the minimum distance that the passenger can get from the dest.
     for taxi in taxis:
         path_to_passenger_cost = taxi.path_cost(dest=passenger_location)
         total_path_cost = path_to_passenger_cost + path_to_destination_cost
         taxi_fuel = taxi.get_fuel()
+        dist_from_dest = max(0, total_path_cost - (taxi_fuel - 1))
+        min_dist_from_dest = min(min_dist_from_dest, dist_from_dest)
         if total_path_cost < taxi_fuel:
             capable_taxis.append(taxi.taxi_index)
-    return capable_taxis
+    return capable_taxis, min_dist_from_dest
 
 
 def collaboration_case(taxi_env: TaxiEnv, controller: Controller, taxis: List[Taxi], passenger_index: int, h: int):
     """
     Check if the taxis are able to bring the passenger (given by the passenger_index) to the destination,
-    when collaborating.
+    when collaborating according to a given hypothesis 'h'.
     Return:
-        A list with the indices of the taxis in the order they are supposed to transfer the passenger. If the taxis
-        are not able to take the passenger to the destination return an empty list.
+        - 1 if the taxis are able to bring the passenger to the destination, 0 otherwise.
+        - The remaining distance of the passenger from her destination (0 if the passenger arrived at the destination).
     """
     # taxi_env.state = [[[2, 1], [2, 0]], [5, 6], [[0, 0]], [[4, 3]], [2]]
-    # taxi_env = copy.deepcopy(taxi_env)
-    # controller = copy.deepcopy(controller)
-    # taxis = copy.deepcopy(taxis)
     passenger_location = taxi_env.state[PASSENGERS_START_LOCATION][passenger_index]
 
     # Allocate the passenger to the closest taxi:
     closest_taxi = controller.find_closest_taxi(dest=passenger_location)
     taxis[closest_taxi].assigned_passengers.append(passenger_index)
-    if closest_taxi == -1:
-        return 0
+    if closest_taxi == -1:  # No taxi has enough fuel to pickup the passenger.
+        passenger_location = taxi_env.state[PASSENGERS_START_LOCATION][passenger_index]
+        passenger_destination = taxi_env.state[PASSENGERS_DESTINATIONS][passenger_index]
+        remaining_dist_to_dest = controller.env_graph.path_cost(origin=passenger_location, dest=passenger_destination)
+        return 0, remaining_dist_to_dest
 
     # Send the taxi to pick up the passenger:
     taxis[closest_taxi].send_taxi_to_pickup()
     controller.execute_all_actions()
 
     # Transfer the passenger between the two taxis:
-    # to_taxi_index = [taxi.taxi_index for taxi in taxis if taxi.taxi_index != closest_taxi]  # todo: change if we
-    # allow more than two taxis
     # collaboration_taxi = 0  # todo: change after we support this in the controller
     to_taxi_index = 1 - closest_taxi
 
-    # Compute the transfer point according to two different heuristics:
+    # Compute the transfer point according to different heuristics:
     if h == 0:
         transfer_point = controller.find_best_transfer_point(from_taxi_index=closest_taxi, passenger_index=0,
                                                              to_taxi_index=to_taxi_index)
-    else:
+    elif h == 1:
         transfer_point = controller.find_best_transfer_point_h2(from_taxi_index=closest_taxi, passenger_index=0)
+    else:
+        transfer_point = controller.find_optimal_transfer_point(from_taxi_index=closest_taxi)
     controller.transfer_passenger(passenger_index=0, from_taxi_index=closest_taxi, to_taxi_index=to_taxi_index,
                                   transfer_point=transfer_point)
 
@@ -72,9 +78,12 @@ def collaboration_case(taxi_env: TaxiEnv, controller: Controller, taxis: List[Ta
     controller.taxis[to_taxi].send_taxi_to_dropoff()
     controller.execute_all_actions()
     if controller.taxi_env.state[PASSENGERS_STATUS][0] == 1:  # True if passenger arrived at destination,
-        return 1
+        return 1, 0
     else:
-        return 0
+        passenger_location = taxi_env.state[PASSENGERS_START_LOCATION][passenger_index]
+        passenger_destination = taxi_env.state[PASSENGERS_DESTINATIONS][passenger_index]
+        remaining_dist_to_dest = controller.env_graph.path_cost(origin=passenger_location, dest=passenger_destination)
+        return 0, remaining_dist_to_dest
 
 
 # def heuristic_1(taxi_env, controller, taxis, closest_taxi):
@@ -131,14 +140,23 @@ def collaboration_experiment(test_repetitions: int, num_taxis: int, taxis_fuel: 
         taxis_fuel: a list of size `num_taxis`, where each element is the maximal fuel value for every taxi.
     """
     no_collaboration_success = 0
+    average_dist_no_collaboration = 0
     collaboration_h1_success = 0
+    average_dist_h1_collaboration = 0
     collaboration_h2_success = 0
+    average_dist_h2_collaboration = 0
+    collaboration_optimal_success = 0
+    average_dist_optimal_collaboration = 0
+
     for test in range(test_repetitions):
         env = TaxiEnv(num_taxis=num_taxis, num_passengers=1, max_fuel=taxis_fuel,
                       taxis_capacity=None, collision_sensitive_domain=False,
-                      fuel_type_list=None, option_to_stand_by=True, domain_map=MAP2)
+                      fuel_type_list=None, option_to_stand_by=True, domain_map=MAP3)
         env.reset()
         env.s = 1022
+
+        # env.state = [[[4, 3], [0, 4]], [4, 1], [[4, 3]], [[0, 0]], [2]]
+        # print(env.state)
 
         # Initialize a Taxi object for each taxi and a controller:
         all_taxis = []
@@ -146,25 +164,50 @@ def collaboration_experiment(test_repetitions: int, num_taxis: int, taxis_fuel: 
             all_taxis.append(Taxi(env, taxi_index=i))
         controller = Controller(env, taxis=all_taxis)
 
-        no_collaboration_test = no_collaboration_case(env, controller, all_taxis, passenger_index=0)
-        if no_collaboration_test:  # if the list is not empty, there is a taxi capable of taking the pass to the dest.
+        no_collaboration_results = no_collaboration_case(env, controller, all_taxis, passenger_index=0)
+        if no_collaboration_results[0]:  # if the list is not empty, there is a taxi capable of taking the pass to the
+            # dest.
             no_collaboration_success += 1
             collaboration_h1_success += 1
             collaboration_h2_success += 1
+            collaboration_optimal_success += 1
         else:
+            # Add the distance of the passenger to the no_collaboration_average as the passenger didn't arrive at dest.
+            average_dist_no_collaboration += no_collaboration_results[1] / test_repetitions
+
             # copy the env state so the same state can be used for both hypotheses:
             state = copy.deepcopy(env.state)
 
             # test our first hypothesis
-            collaboration_h1_success += collaboration_case(env, controller, all_taxis, passenger_index=0, h=0)
+            collaboration_h1_results = collaboration_case(env, controller, all_taxis, passenger_index=0, h=0)
+            collaboration_h1_success += collaboration_h1_results[0]
+            average_dist_h1_collaboration += collaboration_h1_results[1] / test_repetitions
 
             # reset the env to the state before the collaboration test:
             reset_env_state(state, env, controller, all_taxis)
+            state = copy.deepcopy(env.state)
 
             # test our second hypothesis
-            collaboration_h2_success += collaboration_case(env, controller, all_taxis, passenger_index=0, h=1)
+            collaboration_h2_results = collaboration_case(env, controller, all_taxis, passenger_index=0, h=1)
+            collaboration_h2_success += collaboration_h2_results[0]
+            average_dist_h2_collaboration += collaboration_h2_results[1] / test_repetitions
 
-    return no_collaboration_success, collaboration_h1_success, collaboration_h2_success
+            # reset the env to the state before the collaboration test:
+            reset_env_state(state, env, controller, all_taxis)
+            state = copy.deepcopy(env.state)
+
+            # test the optimal solution
+            collaboration_optimal_results = collaboration_case(env, controller, all_taxis, passenger_index=0, h=2)
+            collaboration_optimal_success += collaboration_optimal_results[0]
+            average_dist_optimal_collaboration += collaboration_optimal_results[1] / test_repetitions
+
+            if collaboration_optimal_results[0] == 0 and collaboration_h1_results[0] == 1:
+                print(state)
+                sys.exit(1)
+
+    return no_collaboration_success, average_dist_no_collaboration, collaboration_h1_success, \
+           average_dist_h1_collaboration, collaboration_h2_success, average_dist_h2_collaboration, \
+           collaboration_optimal_success, average_dist_optimal_collaboration
 
 
 def collaboration_statistics(test_repetitions: int):
@@ -174,23 +217,42 @@ def collaboration_statistics(test_repetitions: int):
     """
     fuel_limits = range(3, 17)
     no_collaboration_successes = []
+    no_collaboration_dist = []
     collaboration_h1_successes = []
+    collaboration_h1_dist = []
     collaboration_h2_successes = []
+    collaboration_h2_dist = []
+    collaboration_optimal_successes = []
+    collaboration_optimal_dist = []
     for fuel in fuel_limits:
-        no_collaboration_success, collaboration_h1_success, collaboration_h2_success = collaboration_experiment(
-            test_repetitions=test_repetitions, num_taxis=2, taxis_fuel=[fuel, fuel])
-        no_collaboration_successes.append(no_collaboration_success/test_repetitions * 100)
-        collaboration_h1_successes.append(collaboration_h1_success/test_repetitions * 100)
-        collaboration_h2_successes.append(collaboration_h2_success/test_repetitions * 100)
+        results = collaboration_experiment(test_repetitions=test_repetitions, num_taxis=2, taxis_fuel=[fuel, fuel])
+        no_collaboration_successes.append(results[0] / test_repetitions * 100)
+        no_collaboration_dist.append(results[1])
+        collaboration_h1_successes.append(results[2] / test_repetitions * 100)
+        collaboration_h1_dist.append(results[3])
+        collaboration_h2_successes.append(results[4] / test_repetitions * 100)
+        collaboration_h2_dist.append(results[5])
+        collaboration_optimal_successes.append(results[6] / test_repetitions * 100)
+        collaboration_optimal_dist.append(results[7])
+
+    # Plot success rate graph:
     plt.plot(fuel_limits, no_collaboration_successes, 'b-', fuel_limits, collaboration_h1_successes, 'r-', fuel_limits,
-             collaboration_h2_successes, 'g--')
+             collaboration_h2_successes, 'g--', fuel_limits, collaboration_optimal_successes, 'k--')
     plt.xlabel('Fuel Level')
     plt.ylabel('% of times passenger arrived at destination')
     plt.suptitle('Collaboration vs. Non-Collaboration')
-    plt.legend(('No Collaboration', 'With Collaboration H1', 'With Collaboration H2'), loc='upper left')
+    plt.legend(('No Collaboration', 'With Collaboration H1', 'With Collaboration H2', 'Optimal'), loc='upper left')
+    plt.show()
+
+    # Plot distance from destination graph:
+    plt.plot(fuel_limits, no_collaboration_dist, 'b-', fuel_limits, collaboration_h1_dist, 'r-', fuel_limits,
+             collaboration_h2_dist, 'g--', fuel_limits, collaboration_optimal_dist, 'k--')
+    plt.xlabel('Fuel Level')
+    plt.ylabel('Average distance from destination.')
+    plt.suptitle('Collaboration vs. Non-Collaboration')
+    plt.legend(('No Collaboration', 'With Collaboration H1', 'With Collaboration H2', 'Optimal'), loc='upper right')
     plt.show()
 
 
 if __name__ == '__main__':
-    collaboration_statistics(test_repetitions=1000)
-
+    collaboration_statistics(test_repetitions=500)
