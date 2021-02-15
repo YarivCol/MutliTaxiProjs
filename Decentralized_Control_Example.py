@@ -1,20 +1,19 @@
 from TaxiWrapper.taxi_wrapper import *
 from multitaxienv.taxi_environment import TaxiEnv, orig_MAP
-from typing import Tuple, List
+from typing import List
 
 
 def decentralized_control(num_taxis: int, num_passengers: int, max_fuel: List[int] = None):
-
-    # Initialize a new environment with 2 taxis at a random location and 1 passenger, and display it:
+    """
+    An example of how to make the passenger allocation, pickup, transfer and dropoff in a decentralized manner.
+    """
+    # Initialize a new environment with num_taxis taxis at a random location and num_passengers passengers, and display it:
     env = TaxiEnv(num_taxis=num_taxis, num_passengers=num_passengers, max_fuel=max_fuel,
                   taxis_capacity=[num_passengers]*num_taxis, collision_sensitive_domain=False,
                   fuel_type_list=None, option_to_stand_by=True, domain_map=orig_MAP)
     env.reset()
     env.s = 1022
     env.render()
-    print(env.state)
-    # env.state = [[[0, 2], [2, 3], [3, 3]], [6, 6, 6], [[0, 0]], [[3, 3]], [2]]
-    # env.render()
 
     # Initialize a Taxi object for each taxi:
     all_taxis = []
@@ -71,8 +70,6 @@ def decentralized_control(num_taxis: int, num_passengers: int, max_fuel: List[in
     # Execute the actions of all taxis:
     execute_all_actions(taxi_env=env, taxis=all_taxis)
 
-    print('great success')
-
 
 def execute_all_actions(taxi_env, taxis):
     """
@@ -82,8 +79,6 @@ def execute_all_actions(taxi_env, taxis):
     while any(actions):
         taxis_step = {f'taxi_{taxi.taxi_index + 1}': taxi.get_next_step() for taxi in taxis}
         taxis_step = {item[0]: item[1] for item in taxis_step.items() if item[1] is not None}
-        # next_step = [actions[i].pop(0) if actions[i] else taxi_env.action_index_dictionary['standby']
-        #              for i in range(len(actions))]
         taxi_env.step(taxis_step)
 
         taxi_env.render()

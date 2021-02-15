@@ -80,6 +80,9 @@ class EnvGraph:
 
 
 class Taxi:
+    """
+    Taxi wrapper for a single taxi object.
+    """
     def __init__(self, taxi_env, taxi_index, assigned_passengers=None):
         self.taxi_env = taxi_env
         self.taxi_index = taxi_index
@@ -92,6 +95,9 @@ class Taxi:
         """
         Given a destination point represented by a list of [row, column], compute the shortest path to it from the
         current location of the taxi or from the origin point if given.
+
+        Returns: - list of coordinates for the shortest path that was computed.
+                 - list of actions that are required to complete the shortest path.
         """
         env_state = self.taxi_env.state
         origin = origin if origin is not None else env_state[TAXIS_LOCATIONS][self.taxi_index]
@@ -100,18 +106,11 @@ class Taxi:
 
     def get_next_step(self):
         """
-        Gets the next step in the path of the shortest path that was previously computed.
-        Returns the action of the next step .
+        Gets the next step in the taxi's action-queue.
         """
         if self.actions_queue:
             next_action = self.actions_queue.pop(0)
             return next_action
-
-    def update_env_state(self, new_state):
-        """
-        Updates the state of the environment to the new given state.
-        """
-        self.taxi_env = new_state
 
     def get_location(self):
         """
@@ -127,7 +126,8 @@ class Taxi:
 
     def path_cost(self, dest: List[int], origin: List[int] = None):
         """
-        Compute the cost of the path from the taxi's current location to a given destination point.
+        Compute the cost of the path from the taxi's current location (or from the origin point if given) to a given
+        destination point.
         """
         origin = origin if origin else self.taxi_env.state[TAXIS_LOCATIONS][self.taxi_index]
         _, actions = self.env_graph.get_path(origin, dest)
@@ -135,7 +135,7 @@ class Taxi:
 
     def send_taxi_to_point(self, point):
         """
-        Sends the taxi to the given point. Add all steps in the path to the actions queue of the taxi.
+        Sends the taxi to the given point. Adds all steps in the path to the actions queue of the taxi.
         Args:
             point: the location the taxi should drive to.
         """
@@ -145,25 +145,21 @@ class Taxi:
     def send_taxi_to_pickup(self, passenger_index=None):
         """
         Sends the taxi to pickup passenger number `passenger_index` from her current location.
+        Adds all steps in the path to the actions queue of the taxi.
         Args:
             passenger_index: the index of the passenger that should be picked up.
         """
-        # Assign the passenger to the taxi by setting the passenger_index field of the taxi:
-        # if passenger_index is not None:
-        #     self.assigned_passengers.append(passenger_index)
-
         # Check if the taxi has an assigned passenger, if not don't do anything
         if not self.assigned_passengers and passenger_index is None:
             return
         pickup_passenger = passenger_index if passenger_index else self.assigned_passengers[0]
-
-        passenger_location = self.taxi_env.state[PASSENGERS_START_LOCATION][self.assigned_passengers[0]]  # todo: check if should support multiple passengers
+        passenger_location = self.taxi_env.state[PASSENGERS_START_LOCATION][pickup_passenger]
         self.send_taxi_to_point(point=passenger_location)
 
         # Add a `pickup` action:
         self.actions_queue.extend([(self.taxi_env.action_index_dictionary['pickup'])])
 
-    def send_taxi_to_dropoff(self, point=None):  # todo: allow passenger_index to drop-off
+    def send_taxi_to_dropoff(self, point=None):
         """
         Sends the taxi to dropoff its passenger at the location given by `point`. If no dropoff point is given,
         the passenger will be dropped off at her destination.
@@ -179,7 +175,6 @@ class Taxi:
         # Add a `dropoff` action:
         self.actions_queue.extend([self.taxi_env.action_index_dictionary[f'dropoff{self.assigned_passengers[0]}']])
         self.assigned_passengers.pop(0)
-        # todo: remove the relevant passenger and not passenger at index 0
 
     def pickup_cost(self, passenger_index):
         """
@@ -258,7 +253,7 @@ class Taxi:
 
     def decide_assignments(self):
         """
-        Go over all messages and check which taxi is the closets to every passenger. The taxi assigns to itself the
+        Go over all messages and check which taxi is the closest to every passenger. The taxi assigns to itself the
         passengers that are closest to it.
         """
         pickup_cost = np.inf
@@ -293,7 +288,7 @@ class Taxi:
 
     def listen(self, message):
         """
-        Listen to new messages broadcast by different taxis and add it to the taxi's communication channel.
+        Listen to new messages broadcast by different taxis and add them to the taxi's communication channel.
         """
         self.communication_channel.extend(message)
 
@@ -347,7 +342,7 @@ class Taxi:
         """
         Find the best point to transfer the passenger between the taxis. The best point is considered as the point
         closest to the shortest path from the current location of the `to_taxi_index` taxi to the passenger's
-        destination. This point will cause the `to_taxi_index` make the smallest possible detour.
+        destination. This point will cause the `to_taxi_index` to make the smallest possible detour.
         Args:
             to_taxi_index: the index of the taxi the passenger should be transferred to.
             passenger_index: the index of the passenger that should be transferred.
@@ -388,17 +383,10 @@ class Taxi:
 
     def intermediate_pickup(self):
         """
-        Check if the taxi should go to a transfer point and pickup a passenger.
+        Check if the taxi should go to a transfer point and pickup a passenger from another taxi.
         """
         for message in self.communication_channel:
             transfer_point = message.get('transfer_point')
             self.send_taxi_to_point(point=transfer_point)
             self.assigned_passengers.append(message.get('passenger_index'))
         self.communication_channel = []
-
-
-
-
-
-
-
