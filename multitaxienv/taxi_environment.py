@@ -305,6 +305,10 @@ class TaxiEnv(gym.Env):
         return (taxis_locations[taxi] in self.fuel_stations and
                 self.map_at_location(taxis_locations[taxi]) == self.fuel_type_list[taxi])
 
+    def is_passanger_taken(self, passanger_index):
+        _, _, _, _, passengers_status = self.state
+        return passengers_status[passanger_index] != 0
+
     def step(self, actions: list) -> (list, list, bool):
         """
         TODO - add an option to choose whether to execute in joint/serialized manner.
@@ -321,7 +325,9 @@ class TaxiEnv(gym.Env):
         max_row = self.num_rows - 1
         max_col = self.num_columns - 1
 
-        rewards = []
+        rewards = {}
+
+        taxis_locations, fuels, passengers_start_locations, destinations, passengers_status = self.state
 
         # Main of the function, for each taxi-i act on action[i]
         for taxi, action in enumerate(actions):
@@ -330,8 +336,6 @@ class TaxiEnv(gym.Env):
             # If the taxi collided, it can't perform a step
             if self.collided[taxi] == 1:
                 continue
-
-            taxis_locations, fuels, passengers_start_locations, destinations, passengers_status = self.state
 
             # If the taxi is out of fuel, it can't perform a step
             if fuels[taxi] == 0 and not self.at_valid_fuel_station(taxi, taxis_locations):
@@ -373,15 +377,22 @@ class TaxiEnv(gym.Env):
                 if self.collision_sensitive_domain and moved:
                     if self.collided[taxi] == 0:
                         # Check if the number of taxis on the destination location is greater than 1
-                        if len([i for i in range(self.num_taxis) if taxis_locations[i] == [row, col]]) > 0:
+                        if len([i for i in range(self.num_taxis) if taxis_locations[i] == [row, col] and self.collided[i] == 0]) > 0:
                             if self.option_to_standby:
                                 moved = False
                                 action = self.action_index_dictionary['standby']
                             else:
+                                reward = 0
+                                for i, loc in enumerate(passengers_status):  
+                                    if loc > 0 and (taxis_locations[loc-1] == [row, col] or loc-1 == taxi):
+                                        passengers_status[i] = -2
+                                        reward += taxi_env_rewards['passenger_killed']
+
                                 self.collided[[i for i in range(len(taxis_locations)) if taxis_locations[i] ==
-                                               [row, col]]] = 1
+                                              [row, col] and self.collided[i] == 0]] = 1
                                 self.collided[taxi] = 1
-                                reward = taxi_env_rewards['collision']
+
+                                reward += taxi_env_rewards['collision']
                 if self.collision_sensitive_domain and self.collided[taxi] == 1:  # Taxi is already collided
                     pass
 
@@ -447,7 +458,7 @@ class TaxiEnv(gym.Env):
 
             # TODO - add feature to describe the 'done' cause
             # check if all the passengers are at their destinations
-            done = all(loc == -1 for loc in passengers_status)
+            done = all(loc < 0 for loc in passengers_status)
             self.dones.append(done)
 
             # check if all taxis collided
@@ -458,9 +469,11 @@ class TaxiEnv(gym.Env):
             done = all(np.array(fuels) == 0)
             self.dones.append(done)
 
-            rewards.append(reward)
+            rewards[taxi] = reward
+            #rewards.append(reward)
             self.state = [taxis_locations, fuels, passengers_start_locations, destinations, passengers_status]
             self.last_action = actions
+
 
         return self.state, rewards, any(self.dones)
 
@@ -528,8 +541,11 @@ class TaxiEnv(gym.Env):
             start = tuple(passengers_start_coordinates[i])
             end = tuple(destinations[i])
             if location < 0:
-                outfile.write("Passenger{}: Location: Arrived!, Destination: {}\n".format(i + 1, end))
-            if location == 0:
+                if location == -1:
+                    outfile.write("Passenger{}: Location: Arrived!, Destination: {}\n".format(i + 1, end))
+                else:
+                    outfile.write("Passenger{}: Location: Killed!, Destination: {}\n".format(i + 1, end))
+            elif location == 0:
                 outfile.write("Passenger{}: Location: {}, Destination: {}\n".format(i + 1, start, end))
             else:
                 outfile.write("Passenger{}: Location: Taxi{}, Destination: {}\n".format(i + 1, location, end))
